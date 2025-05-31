@@ -1,4 +1,4 @@
-Copyright (c) 2022 Ryan Wiedemann
+Copyright (c) 2025 the time-loops-and-checking-knowledge authors (see the AUTHORS file).
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated

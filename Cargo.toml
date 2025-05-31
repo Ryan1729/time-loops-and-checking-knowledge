@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "rename-me",
+    "time-loops-and-checking-knowledge",
     "run-wasm"
 ]
 
