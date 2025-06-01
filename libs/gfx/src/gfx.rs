@@ -2,6 +2,9 @@ use models::{Card, Rank, Suit, get_rank, get_suit, suits};
 
 use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 
+// TODO make constants for all valid tile IDs
+pub type TileId = u16;
+
 #[derive(Default)]
 pub struct Commands {
     commands: Vec<Command>,
@@ -32,7 +35,7 @@ impl Commands {
 
     pub fn print_char(
         &mut self,
-        character: u8, 
+        character: u8,
         x: unscaled::X,
         y: unscaled::Y,
         colour: PaletteIndex
@@ -42,13 +45,13 @@ impl Commands {
             let sprite_number = Inner::from(sprite_number);
             const CH_SIZE: Inner = CHAR_SIZE as Inner;
             const SPRITES_PER_ROW: Inner = FONT_WIDTH as Inner / CH_SIZE;
-        
+
             sprite::XY {
                 x: sprite::X(
                     (sprite_number % SPRITES_PER_ROW) * CH_SIZE
                 ),
                 y: sprite::Y(
-                    FONT_BASE_Y as Inner + 
+                    FONT_BASE_Y as Inner +
                     (sprite_number / SPRITES_PER_ROW) * CH_SIZE
                 ),
             }
@@ -69,55 +72,53 @@ impl Commands {
         );
     }
 
-    pub fn draw_card(
+    pub fn draw_tile(
         &mut self,
-        card: Card,
+        tile_id: TileId,
         x: unscaled::X,
         y: unscaled::Y
     ) {
-        self.sspr(
+        fn id_to_xy(tile_id: TileId) -> sprite::XY {
+            type Inner = sprite::Inner;
+            let sprite_number = Inner::from(tile_id);
+            // + 1 for the apron
+            const TILE_SIZE: Inner = tile::WIDTH.get() + 1;
+            const TILES_PER_ROW: Inner = 14;
+
+            const TILE_BASE_X: Inner = 1;
+            const TILE_BASE_Y: Inner = 1;
+
             sprite::XY {
-                x: sprite::X(card::FRONT_SPRITE_X as _),
-                y: sprite::Y(card::FRONT_SPRITE_Y as _),
-            },
+                x: sprite::X(
+                    TILE_BASE_X +
+                    (sprite_number % TILES_PER_ROW) * TILE_SIZE
+                ),
+                y: sprite::Y(
+                    TILE_BASE_Y +
+                    (sprite_number / TILES_PER_ROW) * TILE_SIZE
+                ),
+            }
+        }
+
+        self.sspr(
+            id_to_xy(tile_id),
             Rect::from_unscaled(unscaled::Rect {
                 x,
                 y,
-                w: card::WIDTH,
-                h: card::HEIGHT,
+                w: tile::WIDTH,
+                h: tile::HEIGHT,
             })
         );
-
-        let (colour, suit_char) = get_suit_colour_and_char(get_suit(card));
-
-        let rank_char = get_rank_char(card);
-
-        self.print_char(
-            rank_char,
-            x + card::LEFT_RANK_EDGE_W,
-            y + card::LEFT_RANK_EDGE_H,
-            colour,
-        );
-        self.print_char(
-            suit_char,
-            x + card::LEFT_SUIT_EDGE_W,
-            y + card::LEFT_SUIT_EDGE_H,
-            colour,
-        );
-
-        self.print_char(
-            rank_char | FONT_FLIP,
-            x + card::RIGHT_RANK_EDGE_W,
-            y + card::RIGHT_RANK_EDGE_H,
-            colour,
-        );
-        self.print_char(
-            suit_char | FONT_FLIP,
-            x + card::RIGHT_SUIT_EDGE_W,
-            y + card::RIGHT_SUIT_EDGE_H,
-            colour,
-        );
     }
+}
+
+mod tile {
+    use super::*;
+
+    use unscaled::{W, H};
+
+    pub const WIDTH: W = W(8);
+    pub const HEIGHT: H = H(8);
 }
 
 pub mod card {
@@ -138,20 +139,20 @@ pub mod card {
     pub const LEFT_SUIT_EDGE_H: H = H(10);
 
     pub const RIGHT_RANK_EDGE_W: W = w_const_sub(
-        WIDTH, 
+        WIDTH,
         w_const_add(LEFT_RANK_EDGE_W, CHAR_W)
     );
     pub const RIGHT_RANK_EDGE_H: H = h_const_sub(
-        HEIGHT, 
+        HEIGHT,
         h_const_add(LEFT_RANK_EDGE_H, CHAR_H)
     );
 
     pub const RIGHT_SUIT_EDGE_W: W = w_const_sub(
-        WIDTH, 
+        WIDTH,
         w_const_add(LEFT_SUIT_EDGE_W, CHAR_W)
     );
     pub const RIGHT_SUIT_EDGE_H: H = h_const_sub(
-        HEIGHT, 
+        HEIGHT,
         h_const_add(LEFT_SUIT_EDGE_H, CHAR_H)
     );
 }
