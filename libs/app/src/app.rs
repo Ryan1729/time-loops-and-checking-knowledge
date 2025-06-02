@@ -1,4 +1,4 @@
-use game::Splat;
+use game::{Dir};
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
@@ -21,8 +21,7 @@ impl State {
         // not the macro.
         features::log(&format!("{:?}", seed));
 
-        let mut game_state = game::State::new(seed);
-        //game_state.add_splat();
+        let game_state = game::State::new(seed);
 
         Self {
             game_state,
@@ -65,17 +64,36 @@ impl platform_types::State for State {
 }
 
 fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
-    if input.gamepad != <_>::default() {
-        state.add_splat();
-        speaker.request_sfx(SFX::CardPlace);
+    if input.pressed_this_frame(Button::UP) {
+        state.move_player(Dir::Up);
+    } else if input.pressed_this_frame(Button::DOWN) {
+        state.move_player(Dir::Down);
+    } else if input.pressed_this_frame(Button::LEFT) {
+        state.move_player(Dir::Left);
+    } else if input.pressed_this_frame(Button::RIGHT) {
+        state.move_player(Dir::Right);
     }
 }
 
 #[inline]
 fn render(commands: &mut Commands, state: &game::State) {
-    for &Splat { x, y } in &state.splats {
-        commands.draw_tile(9, x, y);
+    const X_OFFSET: unscaled::X = unscaled::X((command::WIDTH - (game::xy::MAX_W_INNER as unscaled::Inner)) / 2);
+    const Y_OFFSET: unscaled::Y = unscaled::Y((command::HEIGHT - (game::xy::MAX_H_INNER as unscaled::Inner)) / 2);
+
+    for tile in state.current_tiles() {
+        commands.draw_tile(
+            tile.kind,
+            X_OFFSET + tile.x.get().get() * gfx::tile::WIDTH,
+            Y_OFFSET + tile.y.get().get() * gfx::tile::HEIGHT,
+        );
     }
+
+    let tile = &state.player;
+    commands.draw_tile(
+        tile.kind,
+        X_OFFSET + tile.x.get().get() * gfx::tile::WIDTH,
+        Y_OFFSET + tile.y.get().get() * gfx::tile::HEIGHT,
+    );
 }
 
 #[inline]

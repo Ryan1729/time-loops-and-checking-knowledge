@@ -1,5 +1,7 @@
 use xs::Xs;
 
+pub type TileKind = u16;
+
 pub const RANK_COUNT: u8 = 13;
 pub const SUIT_COUNT: u8 = 4;
 pub const DECK_SIZE: u8 = RANK_COUNT * SUIT_COUNT;

@@ -112,7 +112,7 @@ impl Commands {
     }
 }
 
-mod tile {
+pub mod tile {
     use super::*;
 
     use unscaled::{W, H};
