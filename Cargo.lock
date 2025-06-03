@@ -445,6 +445,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 name = "game"
 version = "0.1.0"
 dependencies = [
+ "maps",
  "models",
  "platform_types",
  "xs",
@@ -621,6 +622,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62bb907fe88d54d8d9ce32a3cceab4218ed2f6b7d35617cafe9adf84e43919cb"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "maps"
+version = "0.1.0"
+dependencies = [
+ "models",
 ]
 
 [[package]]
