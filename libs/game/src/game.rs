@@ -50,9 +50,27 @@ pub mod xy {
         }
     }
 
+    impl core::ops::Add<W> for X {
+        type Output = Self;
+
+        fn add(mut self, other: W) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
     impl core::ops::SubAssign<W> for X {
         fn sub_assign(&mut self, other: W) {
             self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<W> for X {
+        type Output = Self;
+
+        fn sub(mut self, other: W) -> Self::Output {
+            self -= other;
+            self
         }
     }
 
@@ -98,9 +116,27 @@ pub mod xy {
         }
     }
 
+    impl core::ops::Add<H> for Y {
+        type Output = Self;
+
+        fn add(mut self, other: H) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
     impl core::ops::SubAssign<H> for Y {
         fn sub_assign(&mut self, other: H) {
             self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<H> for Y {
+        type Output = Self;
+
+        fn sub(mut self, other: H) -> Self::Output {
+            self -= other;
+            self
         }
     }
 }
@@ -166,18 +202,47 @@ impl State {
         move_entity(&mut self.player, dir);
     }
 
-    pub fn current_tiles(&self) -> impl Iterator<Item = Tile> {
-        let top_left = 0; // TODO set based on player position
+    pub fn current_tiles(&self) -> (impl Iterator<Item = Tile>, [Tile; 1]) {
+        let output_width = xy::w(32);
+        let output_height = xy::h(24);
 
-        CameraIter {
-            tiles: &houses::TILES,
-            tiles_width: houses::WIDTH as _,
-            top_left, 
-            output_width: xy::w(32),
-            output_height: xy::h(24),
-            tiles_index: top_left,
-            tile: Tile::default(),
-        }
+        let tiles_width: usize = houses::WIDTH as _;
+        let tiles_height: usize = houses::HEIGHT as _;
+
+        let mut offset_x = self.player.x.get().get() as isize - output_width.usize() as isize / 2;
+        let mut offset_y = self.player.y.get().get() as isize - output_height.usize() as isize / 2;
+
+        // I don't get why the map display breaks if we don't have the - 2
+        // TODO convert CameraIter to work from x and y to avoid a bunch 
+        // of divisions and see if that happens to fix it
+        offset_x = offset_x.clamp(0, (output_width.usize() - 2) as isize);
+        offset_y = offset_y.clamp(0, (output_height.usize() - 2) as isize);
+
+        let top_left = offset_y as usize * tiles_width + offset_x as usize;
+
+        let left_x = top_left % tiles_width;
+        let right_x = left_x + output_width.usize();
+
+        let sprites = [
+            Tile {
+                kind: self.player.kind,
+                x: self.player.x - xy::w(offset_x.try_into().unwrap()), // TODO avoid this unwrap
+                y: self.player.y - xy::h(offset_y.try_into().unwrap()),
+            },
+        ];
+
+        (
+            CameraIter {
+                tiles: &houses::TILES,
+                tiles_width,
+                top_left, 
+                output_width,
+                output_height,
+                tiles_index: top_left,
+                tile: Tile::default(),
+            },
+            sprites
+        )
     }
 }
 

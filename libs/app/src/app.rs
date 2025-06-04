@@ -80,7 +80,9 @@ fn render(commands: &mut Commands, state: &game::State) {
     const X_OFFSET: unscaled::X = unscaled::X((command::WIDTH - (game::xy::MAX_W_INNER as unscaled::Inner)) / 2);
     const Y_OFFSET: unscaled::Y = unscaled::Y((command::HEIGHT - (game::xy::MAX_H_INNER as unscaled::Inner)) / 2);
 
-    for tile in state.current_tiles() {
+    let (mut iter, sprites) = state.current_tiles();
+
+    for tile in iter {
         commands.draw_tile(
             tile.kind,
             X_OFFSET + tile.x.get().get() * gfx::tile::WIDTH,
@@ -88,12 +90,13 @@ fn render(commands: &mut Commands, state: &game::State) {
         );
     }
 
-    let tile = &state.player;
-    commands.draw_tile(
-        tile.kind,
-        X_OFFSET + tile.x.get().get() * gfx::tile::WIDTH,
-        Y_OFFSET + tile.y.get().get() * gfx::tile::HEIGHT,
-    );
+    for tile in sprites {
+        commands.draw_tile(
+            tile.kind,
+            X_OFFSET + tile.x.get().get() * gfx::tile::WIDTH,
+            Y_OFFSET + tile.y.get().get() * gfx::tile::HEIGHT,
+        );
+    }
 }
 
 #[inline]
