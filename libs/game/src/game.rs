@@ -212,16 +212,10 @@ impl State {
         let mut offset_x = self.player.x.get().get() as isize - output_width.usize() as isize / 2;
         let mut offset_y = self.player.y.get().get() as isize - output_height.usize() as isize / 2;
 
-        // I don't get why the map display breaks if we don't have the - 2
-        // TODO convert CameraIter to work from x and y to avoid a bunch 
-        // of divisions and see if that happens to fix it
-        offset_x = offset_x.clamp(0, (output_width.usize() - 2) as isize);
-        offset_y = offset_y.clamp(0, (output_height.usize() - 2) as isize);
+        offset_x = offset_x.clamp(0, output_width.usize() as isize);
+        offset_y = offset_y.clamp(0, output_height.usize() as isize);
 
-        let top_left = offset_y as usize * tiles_width + offset_x as usize;
-
-        let left_x = top_left % tiles_width;
-        let right_x = left_x + output_width.usize();
+        // TODO avoid unneeded conversions
 
         let sprites = [
             Tile {
@@ -235,10 +229,11 @@ impl State {
             CameraIter {
                 tiles: &houses::TILES,
                 tiles_width,
-                top_left, 
+                offset_x: offset_x as usize,
+                offset_y: offset_y as usize,
                 output_width,
                 output_height,
-                tiles_index: top_left,
+                done: false,
                 tile: Tile::default(),
             },
             sprites
@@ -250,8 +245,9 @@ struct CameraIter<'tiles> {
     tile: Tile,
     tiles: &'tiles [TileKind],
     tiles_width: usize,
-    tiles_index: usize,
-    top_left: usize,
+    done: bool,
+    offset_x: usize,
+    offset_y: usize,
     output_width: xy::W,
     output_height: xy::H,
 }
@@ -260,41 +256,30 @@ impl Iterator for CameraIter<'_> {
     type Item = Tile;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(tile_kind) = self.tiles.get(self.tiles_index) {
+        if self.done { return None }
+
+        let tiles_index =
+            (self.tile.y.get().get() as usize + self.offset_y) * self.tiles_width
+            + (self.tile.x.get().get() as usize + self.offset_x);
+        if let Some(tile_kind) = self.tiles.get(tiles_index) {
             self.tile.kind = *tile_kind;
 
             let output = self.tile.clone();
 
-            self.tiles_index += 1;
             self.tile.x += xy::w(1);
 
-            // The x position in the entire field of tiles
-            let tile_x = self.tiles_index % self.tiles_width;
+            let right_x = self.output_width.usize();
 
-            // The x position of the left edge of the view
-            let left_x = self.top_left % self.tiles_width;
-            let right_x = left_x + self.output_width.usize();
-
-            if tile_x > right_x {
-                self.tiles_index = 
-                    // Move back to the start of the row
-                    self.tiles_index - (self.output_width.usize() + 1)
-                    // Move down a row
-                    + self.tiles_width as usize;
+            if self.tile.x.get().get() as usize > right_x {
                 self.tile.x = xy::x(0);
                 self.tile.y += xy::h(1);
-            }
 
-            // The y position in the entire field of tiles
-            let tile_y = self.tiles_index / self.tiles_width;
+                let bottom_y = self.output_height.usize();
 
-            // The y position of the top edge of the view
-            let top_y = self.top_left / self.tiles_width;
-            let bottom_y = top_y + self.output_height.usize();
-
-            if tile_y > bottom_y {
-                // Ensure we hit return None next time
-                self.tiles_index = self.tiles.len();
+                if self.tile.y.get().get() as usize > bottom_y {
+                    // Ensure we hit return None next time
+                    self.done = true;
+                }
             }
 
             return Some(output)
