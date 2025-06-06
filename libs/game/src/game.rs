@@ -8,7 +8,7 @@ pub mod xy {
 
     pub type Inner = u8;
 
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct X(Inner);
 
     /// Clamps to the valid range
@@ -18,24 +18,8 @@ pub mod xy {
 
     pub const MAX_W_INNER: Inner = 0xF0;
 
-    impl X {
-        pub const ONE: Self = Self(1);
-
-        pub fn get(self) -> unscaled::X {
-            unscaled::X(self.0.into())
-        }
-    }
-
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct W(Inner);
-
-    impl W {
-        pub const ONE: Self = Self(1);
-
-        pub fn usize(self) -> usize {
-            self.0.into()
-        }
-    }
 
     pub fn w(w: Inner) -> W {
         W(if w > MAX_W_INNER { MAX_W_INNER } else { w })
@@ -74,7 +58,16 @@ pub mod xy {
         }
     }
 
-    #[derive(Clone, Copy, Default)]
+    impl core::ops::Sub<X> for X {
+        type Output = W;
+
+        fn sub(self, other: X) -> Self::Output {
+            W(self.0.saturating_sub(other.0))
+        }
+    }
+
+
+    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Y(Inner);
 
     pub const MAX_H_INNER: Inner = 0xF0;
@@ -84,24 +77,8 @@ pub mod xy {
         Y(if y > MAX_H_INNER { MAX_H_INNER } else { y })
     }
 
-    impl Y {
-        pub const ONE: Self = Self(1);
-
-        pub fn get(self) -> unscaled::Y {
-            unscaled::Y(self.0.into())
-        }
-    }
-
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct H(Inner);
-
-    impl H {
-        pub const ONE: Self = Self(1);
-
-        pub fn usize(self) -> usize {
-            self.0.into()
-        }
-    }
 
     pub fn h(h: Inner) -> H {
         H(if h > MAX_H_INNER { MAX_H_INNER } else { h })
@@ -138,6 +115,40 @@ pub mod xy {
             self -= other;
             self
         }
+    }
+
+    impl core::ops::Sub<Y> for Y {
+        type Output = H;
+
+        fn sub(self, other: Y) -> Self::Output {
+            H(self.0.saturating_sub(other.0))
+        }
+    }
+
+    macro_rules! shared_impl {
+        ($($name: ident)+) => {
+            $(
+                impl $name {
+                    pub const ONE: Self = Self(1);
+            
+                    pub fn get(self) -> unscaled::$name {
+                        unscaled::$name(self.0.into())
+                    }
+            
+                    pub fn usize(self) -> usize {
+                        self.0.into()
+                    }
+    
+                    pub fn halve(self) -> Self {
+                        Self(self.0 >> 1)
+                    }
+                }
+            )+
+        }
+    }
+
+    shared_impl!{
+        X Y W H
     }
 }
 pub use xy::{X, Y, W, H};
@@ -207,21 +218,18 @@ impl State {
         let output_height = xy::h(24);
 
         let tiles_width: usize = houses::WIDTH as _;
-        let tiles_height: usize = houses::HEIGHT as _;
 
-        let mut offset_x = self.player.x.get().get() as isize - output_width.usize() as isize / 2;
-        let mut offset_y = self.player.y.get().get() as isize - output_height.usize() as isize / 2;
+        let mut offset_x: W = self.player.x - (xy::x(0) + output_width.halve());
+        let mut offset_y: H = self.player.y - (xy::y(0) + output_height.halve());
 
-        offset_x = offset_x.clamp(0, output_width.usize() as isize);
-        offset_y = offset_y.clamp(0, output_height.usize() as isize);
-
-        // TODO avoid unneeded conversions
+        offset_x = offset_x.clamp(xy::w(0), output_width);
+        offset_y = offset_y.clamp(xy::h(0), output_height);
 
         let sprites = [
             Tile {
                 kind: self.player.kind,
-                x: self.player.x - xy::w(offset_x.try_into().unwrap()), // TODO avoid this unwrap
-                y: self.player.y - xy::h(offset_y.try_into().unwrap()),
+                x: self.player.x - offset_x,
+                y: self.player.y - offset_y,
             },
         ];
 
@@ -229,8 +237,8 @@ impl State {
             CameraIter {
                 tiles: &houses::TILES,
                 tiles_width,
-                offset_x: offset_x as usize,
-                offset_y: offset_y as usize,
+                offset_x,
+                offset_y,
                 output_width,
                 output_height,
                 done: false,
@@ -246,8 +254,8 @@ struct CameraIter<'tiles> {
     tiles: &'tiles [TileKind],
     tiles_width: usize,
     done: bool,
-    offset_x: usize,
-    offset_y: usize,
+    offset_x: xy::W,
+    offset_y: xy::H,
     output_width: xy::W,
     output_height: xy::H,
 }
@@ -259,8 +267,8 @@ impl Iterator for CameraIter<'_> {
         if self.done { return None }
 
         let tiles_index =
-            (self.tile.y.get().get() as usize + self.offset_y) * self.tiles_width
-            + (self.tile.x.get().get() as usize + self.offset_x);
+            (self.tile.y + self.offset_y).usize() * self.tiles_width
+            + (self.tile.x + self.offset_x).usize();
         if let Some(tile_kind) = self.tiles.get(tiles_index) {
             self.tile.kind = *tile_kind;
 
@@ -268,15 +276,15 @@ impl Iterator for CameraIter<'_> {
 
             self.tile.x += xy::w(1);
 
-            let right_x = self.output_width.usize();
+            let right_x = xy::x(0) + self.output_width;
 
-            if self.tile.x.get().get() as usize > right_x {
+            if self.tile.x > right_x {
                 self.tile.x = xy::x(0);
                 self.tile.y += xy::h(1);
 
-                let bottom_y = self.output_height.usize();
+                let bottom_y = xy::y(0) + self.output_height;
 
-                if self.tile.y.get().get() as usize > bottom_y {
+                if self.tile.y > bottom_y {
                     // Ensure we hit return None next time
                     self.done = true;
                 }
