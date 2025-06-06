@@ -8,7 +8,7 @@ pub mod xy {
 
     pub type Inner = u8;
 
-    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct X(Inner);
 
     /// Clamps to the valid range
@@ -18,7 +18,7 @@ pub mod xy {
 
     pub const MAX_W_INNER: Inner = 0xF0;
 
-    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct W(Inner);
 
     pub fn w(w: Inner) -> W {
@@ -67,7 +67,7 @@ pub mod xy {
     }
 
 
-    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Y(Inner);
 
     pub const MAX_H_INNER: Inner = 0xF0;
@@ -77,7 +77,7 @@ pub mod xy {
         Y(if y > MAX_H_INNER { MAX_H_INNER } else { y })
     }
 
-    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct H(Inner);
 
     pub fn h(h: Inner) -> H {
@@ -160,7 +160,7 @@ pub struct Entity {
     pub y: Y,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Tile {
     pub kind: TileKind,
     pub x: X,
@@ -278,13 +278,13 @@ impl Iterator for CameraIter<'_> {
 
             let right_x = xy::x(0) + self.output_width;
 
-            if self.tile.x > right_x {
+            if self.tile.x >= right_x {
                 self.tile.x = xy::x(0);
                 self.tile.y += xy::h(1);
 
                 let bottom_y = xy::y(0) + self.output_height;
 
-                if self.tile.y > bottom_y {
+                if self.tile.y >= bottom_y {
                     // Ensure we hit return None next time
                     self.done = true;
                 }
