@@ -1,5 +1,4 @@
 use models::{TileKind};
-use maps::{Map};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
@@ -23,6 +22,21 @@ pub mod xy {
 
     pub fn w(w: Inner) -> W {
         W(if w > MAX_W_INNER { MAX_W_INNER } else { w })
+    }
+
+    impl core::ops::SubAssign<W> for W {
+        fn sub_assign(&mut self, other: W) {
+            self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<W> for W {
+        type Output = Self;
+
+        fn sub(mut self, other: W) -> Self::Output {
+            self -= other;
+            self
+        }
     }
 
     impl core::ops::AddAssign<W> for X {
@@ -84,6 +98,21 @@ pub mod xy {
         H(if h > MAX_H_INNER { MAX_H_INNER } else { h })
     }
 
+    impl core::ops::SubAssign<H> for H {
+        fn sub_assign(&mut self, other: H) {
+            self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<H> for H {
+        type Output = Self;
+
+        fn sub(mut self, other: H) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
     impl core::ops::AddAssign<H> for Y {
         fn add_assign(&mut self, other: H) {
             self.0 = self.0.saturating_add(other.0);
@@ -129,6 +158,7 @@ pub mod xy {
         ($($name: ident)+) => {
             $(
                 impl $name {
+                    pub const ZERO: Self = Self(0);
                     pub const ONE: Self = Self(1);
 
                     pub fn get(self) -> unscaled::$name {
@@ -167,11 +197,13 @@ pub struct Tile {
     pub y: Y,
 }
 
+type Map = &'static maps::Map;
+
 #[derive(Clone)]
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
-    pub map: &'static Map
+    pub map: Map
 }
 
 #[derive(Clone, Copy)]
@@ -182,7 +214,7 @@ pub enum Dir {
     Right,
 }
 
-fn move_entity(entity: &mut Entity, dir: Dir) {
+fn move_entity(entity: &mut Entity, map: Map, dir: Dir) {
     use Dir::*;
     match dir {
         Up => { entity.y -= H::ONE; },
@@ -190,6 +222,12 @@ fn move_entity(entity: &mut Entity, dir: Dir) {
         Left => { entity.x -= W::ONE; },
         Right => { entity.x += W::ONE; },
     }
+
+    let max_map_x = xy::x((map.width.saturating_sub(1)) as _);
+    let max_map_y = xy::y((map.height.saturating_sub(1)) as _);
+
+    entity.x = entity.x.clamp(X::ZERO, max_map_x);
+    entity.y = entity.y.clamp(Y::ZERO, max_map_y);
 }
 
 impl State {
@@ -213,18 +251,26 @@ impl State {
     }
 
     pub fn move_player(&mut self, dir: Dir) {
-        move_entity(&mut self.player, dir);
+        move_entity(&mut self.player, self.map, dir);
     }
 
     pub fn current_tiles(&self) -> (impl Iterator<Item = Tile>, [Tile; 1]) {
-        let output_width = xy::w(32);
-        let output_height = xy::h(24);
+        let map_w = xy::w(self.map.width as _);
+        let map_h = xy::h(self.map.width as _);
 
-        let mut offset_x: W = self.player.x - (xy::x(0) + output_width.halve());
-        let mut offset_y: H = self.player.y - (xy::y(0) + output_height.halve());
+        let output_width = xy::w(32).clamp(W::ZERO, map_w);
+        let output_height = xy::h(24).clamp(H::ZERO, map_h);
 
-        offset_x = offset_x.clamp(xy::w(0), output_width);
-        offset_y = offset_y.clamp(xy::h(0), output_height);
+        let mut offset_x: W = self.player.x - (X::ZERO + output_width.halve());
+        let mut offset_y: H = self.player.y - (Y::ZERO + output_height.halve());
+
+        // Want to clamp the offset such that we never see the edge of the world.
+        // So when output_width == self.map.width, we want the offset to always
+        // be zero. But, when output_width + 1 == self.map.width we want the
+        // offset to sometimes be one. Hence self.map.width - output_width
+
+        offset_x = offset_x.clamp(W::ZERO, map_w - output_width);
+        offset_y = offset_y.clamp(H::ZERO, map_h - output_height);
 
         let sprites = [
             Tile {
@@ -252,7 +298,7 @@ impl State {
 struct CameraIter {
     tile: Tile,
     done: bool,
-    map: &'static Map,
+    map: Map,
     offset_x: xy::W,
     offset_y: xy::H,
     output_width: xy::W,
@@ -275,15 +321,15 @@ impl Iterator for CameraIter {
 
             self.tile.x += xy::w(1);
 
-            let right_x = xy::x(0) + self.output_width;
+            let right_x = X::ZERO + self.output_width;
 
-            if self.tile.x >= right_x {
-                self.tile.x = xy::x(0);
+            if self.tile.x + self.offset_x >= right_x {
+                self.tile.x = X::ZERO;
                 self.tile.y += xy::h(1);
 
-                let bottom_y = xy::y(0) + self.output_height;
+                let bottom_y = Y::ZERO + self.output_height;
 
-                if self.tile.y >= bottom_y {
+                if self.tile.y + self.offset_y >= bottom_y {
                     // Ensure we hit return None next time
                     self.done = true;
                 }
