@@ -1,5 +1,5 @@
 use models::{TileKind};
-use maps::houses;
+use maps::{Map};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
@@ -130,15 +130,15 @@ pub mod xy {
             $(
                 impl $name {
                     pub const ONE: Self = Self(1);
-            
+
                     pub fn get(self) -> unscaled::$name {
                         unscaled::$name(self.0.into())
                     }
-            
+
                     pub fn usize(self) -> usize {
                         self.0.into()
                     }
-    
+
                     pub fn halve(self) -> Self {
                         Self(self.0 >> 1)
                     }
@@ -167,11 +167,11 @@ pub struct Tile {
     pub y: Y,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
-    pub scratch_tile: Tile,
+    pub map: &'static Map
 }
 
 #[derive(Clone, Copy)]
@@ -194,18 +194,21 @@ fn move_entity(entity: &mut Entity, dir: Dir) {
 
 impl State {
     pub fn new(seed: Seed) -> State {
-        use maps::{houses};
-
-        let rng = xs::from_seed(seed);
+        let mut rng = xs::from_seed(seed);
 
         let mut player = Entity::default();
         player.kind = 9;
         player.x = xy::x(2);
 
+        let map = match xs::range(&mut rng, 0..2 as u32) {
+            1 => &maps::HOUSES,
+            _ => &maps::STRUCTURED_ART,
+        };
+
         State {
             rng,
             player,
-            .. <_>::default()
+            map,
         }
     }
 
@@ -216,8 +219,6 @@ impl State {
     pub fn current_tiles(&self) -> (impl Iterator<Item = Tile>, [Tile; 1]) {
         let output_width = xy::w(32);
         let output_height = xy::h(24);
-
-        let tiles_width: usize = houses::WIDTH as _;
 
         let mut offset_x: W = self.player.x - (xy::x(0) + output_width.halve());
         let mut offset_y: H = self.player.y - (xy::y(0) + output_height.halve());
@@ -235,8 +236,7 @@ impl State {
 
         (
             CameraIter {
-                tiles: &houses::TILES,
-                tiles_width,
+                map: self.map,
                 offset_x,
                 offset_y,
                 output_width,
@@ -249,27 +249,26 @@ impl State {
     }
 }
 
-struct CameraIter<'tiles> {
+struct CameraIter {
     tile: Tile,
-    tiles: &'tiles [TileKind],
-    tiles_width: usize,
     done: bool,
+    map: &'static Map,
     offset_x: xy::W,
     offset_y: xy::H,
     output_width: xy::W,
     output_height: xy::H,
 }
 
-impl Iterator for CameraIter<'_> {
+impl Iterator for CameraIter {
     type Item = Tile;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done { return None }
 
         let tiles_index =
-            (self.tile.y + self.offset_y).usize() * self.tiles_width
+            (self.tile.y + self.offset_y).usize() * self.map.width as usize
             + (self.tile.x + self.offset_x).usize();
-        if let Some(tile_kind) = self.tiles.get(tiles_index) {
+        if let Some(tile_kind) = self.map.tiles.get(tiles_index) {
             self.tile.kind = *tile_kind;
 
             let output = self.tile.clone();
