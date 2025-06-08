@@ -346,13 +346,13 @@ impl Iterator for CameraIter {
 
             let right_x = X::ZERO + self.output_width;
 
-            if self.tile.x + self.offset_x >= right_x {
+            if self.tile.x >= right_x {
                 self.tile.x = X::ZERO;
                 self.tile.y += xy::h(1);
 
                 let bottom_y = Y::ZERO + self.output_height;
 
-                if self.tile.y + self.offset_y >= bottom_y {
+                if self.tile.y >= bottom_y {
                     // Ensure we hit return None next time
                     self.done = true;
                 }
