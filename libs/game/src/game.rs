@@ -1,4 +1,4 @@
-use models::{TileKind};
+use models::{tile, TileKind};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
@@ -199,6 +199,10 @@ pub struct Tile {
 
 type Map = &'static maps::Map;
 
+fn xy_to_i(map: Map, x: X, y: Y) -> usize {
+    y.usize() * map.width as usize + x.usize()
+}
+
 #[derive(Clone)]
 pub struct State {
     pub rng: Xs,
@@ -215,19 +219,39 @@ pub enum Dir {
 }
 
 fn move_entity(entity: &mut Entity, map: Map, dir: Dir) {
+    let mut new_x = entity.x;
+    let mut new_y = entity.y;
+
     use Dir::*;
     match dir {
-        Up => { entity.y -= H::ONE; },
-        Down => { entity.y += H::ONE; },
-        Left => { entity.x -= W::ONE; },
-        Right => { entity.x += W::ONE; },
+        Up => { new_y -= H::ONE; },
+        Down => { new_y += H::ONE; },
+        Left => { new_x -= W::ONE; },
+        Right => { new_x += W::ONE; },
+    }
+
+    let index = xy_to_i(map, new_x, new_y);
+    if let Some(tile_kind) = map.tiles.get(index) {
+        match *tile_kind {
+            tile::FLOOR
+            | tile::GROUND
+            | tile::GRASS_GROUND
+            | tile::DOOR_0
+            | tile::DOOR_1
+            | tile::DOOR_2
+            | tile::DOOR_3
+            | tile::DOOR_4 => {} // Allow move to happen
+            _ => return, // Don't allow move to happen
+        }
+    } else {
+        // If we're glitched out of bounds, let movement through so they can maybe get unstuck.
     }
 
     let max_map_x = xy::x((map.width.saturating_sub(1)) as _);
     let max_map_y = xy::y((map.height.saturating_sub(1)) as _);
 
-    entity.x = entity.x.clamp(X::ZERO, max_map_x);
-    entity.y = entity.y.clamp(Y::ZERO, max_map_y);
+    entity.x = new_x.clamp(X::ZERO, max_map_x);
+    entity.y = new_y.clamp(Y::ZERO, max_map_y);
 }
 
 impl State {
@@ -312,8 +336,7 @@ impl Iterator for CameraIter {
         if self.done { return None }
 
         let tiles_index =
-            (self.tile.y + self.offset_y).usize() * self.map.width as usize
-            + (self.tile.x + self.offset_x).usize();
+            xy_to_i(self.map, self.tile.x + self.offset_x, self.tile.y + self.offset_y);
         if let Some(tile_kind) = self.map.tiles.get(tiles_index) {
             self.tile.kind = *tile_kind;
 

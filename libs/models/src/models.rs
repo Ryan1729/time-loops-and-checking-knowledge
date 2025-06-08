@@ -2,6 +2,19 @@ use xs::Xs;
 
 pub type TileKind = u16;
 
+pub mod tile {
+    use super::*;
+
+    pub const DOOR_0: TileKind = 2;
+    pub const DOOR_1: TileKind = 30;
+    pub const DOOR_2: TileKind = 33;
+    pub const DOOR_3: TileKind = 128;
+    pub const DOOR_4: TileKind = 134;
+    pub const FLOOR: TileKind = 15;
+    pub const GROUND: TileKind = 60;
+    pub const GRASS_GROUND: TileKind = 61;
+}
+
 pub const RANK_COUNT: u8 = 13;
 pub const SUIT_COUNT: u8 = 4;
 pub const DECK_SIZE: u8 = RANK_COUNT * SUIT_COUNT;
