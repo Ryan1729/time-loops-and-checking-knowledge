@@ -11,7 +11,7 @@ pub mod xy {
     pub struct X(Inner);
 
     /// Clamps to the valid range
-    pub fn x(x: Inner) -> X {
+    pub const fn x(x: Inner) -> X {
         X(if x > MAX_W_INNER { MAX_W_INNER } else { x })
     }
 
@@ -20,7 +20,7 @@ pub mod xy {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct W(Inner);
 
-    pub fn w(w: Inner) -> W {
+    pub const fn w(w: Inner) -> W {
         W(if w > MAX_W_INNER { MAX_W_INNER } else { w })
     }
 
@@ -87,14 +87,14 @@ pub mod xy {
     pub const MAX_H_INNER: Inner = 0xF0;
 
     /// Clamps to the valid range
-    pub fn y(y: Inner) -> Y {
+    pub const fn y(y: Inner) -> Y {
         Y(if y > MAX_H_INNER { MAX_H_INNER } else { y })
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct H(Inner);
 
-    pub fn h(h: Inner) -> H {
+    pub const fn h(h: Inner) -> H {
         H(if h > MAX_H_INNER { MAX_H_INNER } else { h })
     }
 
@@ -203,12 +203,35 @@ fn xy_to_i(map: Map, x: X, y: Y) -> usize {
     y.usize() * map.width as usize + x.usize()
 }
 
+#[derive(Clone, Copy, Default)]
+enum Screen {
+    #[default]
+    Gameplay,
+    Congraturation,
+}
+
 #[derive(Clone)]
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
-    pub map: Map
+    pub map: Map,
+    pub screen: Screen,
+    // TODO store things that the player can change separate from the tiles so we can keep the
+    // map static.
 }
+
+// Plan:
+// Have a short 4 direction password you can type out on switches on the ground to win the game.
+//
+// Steps:
+// * Make walking over a tile show a "congraturation this story is happy end" screen (done)
+// * Make walking over the key open the door
+// * Make the key require pressing all the buttons down
+// * Make walking into the portal reset time
+// * Make a fixed password reveal the key
+// * Make the people each reveal part of the password, but get angry if you asked someone else already
+// * Make the password be randomized
+
 
 #[derive(Clone, Copy)]
 pub enum Dir {
@@ -240,7 +263,8 @@ fn move_entity(entity: &mut Entity, map: Map, dir: Dir) {
             | tile::DOOR_1
             | tile::DOOR_2
             | tile::DOOR_3
-            | tile::DOOR_4 => {} // Allow move to happen
+            | tile::DOOR_4
+            | tile::STAIRS_DOWN => {} // Allow move to happen
             _ => return, // Don't allow move to happen
         }
     } else {
@@ -258,26 +282,68 @@ impl State {
     pub fn new(seed: Seed) -> State {
         let mut rng = xs::from_seed(seed);
 
-        let mut player = Entity::default();
-        player.kind = 9;
-        player.x = xy::x(2);
+        let player = Entity {
+            kind: 9,
+            x: xy::x(2),
+            y: xy::y(2),
+        };
 
-        let map = match xs::range(&mut rng, 0..2 as u32) {
-            1 => &maps::HOUSES,
-            _ => &maps::STRUCTURED_ART,
+        let map = if cfg!(feature = "structured_art_mode") {
+            &maps::STRUCTURED_ART
+        } else {
+            &maps::HOUSES
         };
 
         State {
             rng,
             player,
             map,
+            screen: Screen::default(),
         }
     }
 
     pub fn move_player(&mut self, dir: Dir) {
         move_entity(&mut self.player, self.map, dir);
+
+        let index = xy_to_i(self.map, self.player.x, self.player.y);
+        match self.map.tiles.get(index) {
+            Some(&tile::STAIRS_DOWN) => {
+                self.screen = Screen::Congraturation;
+            }
+            _ => {}
+        }
     }
 
+    pub fn current_message(&self) -> impl Iterator<Item = &Segment> {
+        let output: &'static [Segment] = match self.screen {
+            Screen::Gameplay => &[],
+            Screen::Congraturation => &CONGRATURATION_LINES,
+        };
+        output.into_iter()
+    }
+}
+
+pub struct Segment {
+    pub text: &'static [u8],
+    pub x: X,
+    pub y: Y,
+}
+
+static CONGRATURATION_LINES: [Segment; 2] =
+    [
+        Segment {
+            text: b"congraturation",
+            x: xy::x(12),
+            y: xy::y(4),
+        },
+        Segment {
+            text: b"this story is happy end",
+            x: xy::x(4),
+            y: xy::y(8),
+        },
+    ];
+
+impl State {
     pub fn current_tiles(&self) -> (impl Iterator<Item = Tile>, [Tile; 1]) {
         let map_w = xy::w(self.map.width as _);
         let map_h = xy::h(self.map.width as _);
@@ -304,20 +370,35 @@ impl State {
             },
         ];
 
-        (
-            CameraIter {
-                map: self.map,
-                offset_x,
-                offset_y,
-                output_width,
-                output_height,
-                done: false,
-                tile: Tile::default(),
-            },
-            sprites
-        )
+        match self.screen {
+            Screen::Gameplay => (
+                CameraIter {
+                    map: self.map,
+                    offset_x,
+                    offset_y,
+                    output_width,
+                    output_height,
+                    done: false,
+                    tile: Tile::default(),
+                },
+                sprites
+            ),
+            Screen::Congraturation => (
+                CameraIter {
+                    map: self.map,
+                    offset_x,
+                    offset_y,
+                    output_width,
+                    output_height,
+                    done: true, // No tiles needed
+                    tile: Tile::default(),
+                },
+                sprites
+            ),
+        }
     }
 }
+
 
 struct CameraIter {
     tile: Tile,

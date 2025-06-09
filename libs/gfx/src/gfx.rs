@@ -72,6 +72,27 @@ impl Commands {
         );
     }
 
+    pub fn print(
+        &mut self,
+        characters: &[u8],
+        x: unscaled::X,
+        y: unscaled::Y,
+        colour: PaletteIndex
+    ) {
+        let mut current_x = x;
+
+        for &character in characters {
+            self.print_char(
+                character,
+                current_x,
+                y,
+                colour,
+            );
+
+            current_x += CHAR_W;
+        }
+    }
+
     pub fn draw_tile(
         &mut self,
         tile_id: TileId,

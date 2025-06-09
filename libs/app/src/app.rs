@@ -80,21 +80,39 @@ fn render(commands: &mut Commands, state: &game::State) {
     const X_OFFSET: unscaled::X = unscaled::X((command::WIDTH - (game::xy::MAX_W_INNER as unscaled::Inner)) / 2);
     const Y_OFFSET: unscaled::Y = unscaled::Y((command::HEIGHT - (game::xy::MAX_H_INNER as unscaled::Inner)) / 2);
 
+    fn to_x(x: game::X) -> unscaled::X {
+        X_OFFSET + x.get().get() * gfx::tile::WIDTH
+    }
+
+    fn to_y(y: game::Y) -> unscaled::Y {
+        Y_OFFSET + y.get().get() * gfx::tile::HEIGHT
+    }
+
     let (mut iter, sprites) = state.current_tiles();
 
     for tile in iter {
         commands.draw_tile(
             tile.kind,
-            X_OFFSET + tile.x.get().get() * gfx::tile::WIDTH,
-            Y_OFFSET + tile.y.get().get() * gfx::tile::HEIGHT,
+            to_x(tile.x),
+            to_y(tile.y),
         );
     }
 
     for tile in sprites {
         commands.draw_tile(
             tile.kind,
-            X_OFFSET + tile.x.get().get() * gfx::tile::WIDTH,
-            Y_OFFSET + tile.y.get().get() * gfx::tile::HEIGHT,
+            to_x(tile.x),
+            to_y(tile.y),
+        );
+    }
+
+    let mut message = state.current_message();
+    for segment in message {
+        commands.print(
+            segment.text,
+            to_x(segment.x),
+            to_y(segment.y),
+            6
         );
     }
 }

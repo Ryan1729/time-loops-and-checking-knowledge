@@ -11,6 +11,7 @@ pub mod tile {
     pub const DOOR_3: TileKind = 128;
     pub const DOOR_4: TileKind = 134;
     pub const FLOOR: TileKind = 15;
+    pub const STAIRS_DOWN: TileKind = 46;
     pub const GROUND: TileKind = 60;
     pub const GRASS_GROUND: TileKind = 61;
 }
