@@ -2,6 +2,8 @@ use models::{tile, TileKind};
 use platform_types::{command, unscaled};
 use xs::{Xs, Seed};
 
+use std::collections::HashMap;
+
 pub mod xy {
     use super::*;
 
@@ -204,11 +206,13 @@ fn xy_to_i(map: Map, x: X, y: Y) -> usize {
 }
 
 #[derive(Clone, Copy, Default)]
-enum Screen {
+pub enum Screen {
     #[default]
     Gameplay,
     Congraturation,
 }
+
+type Entities = HashMap<usize, Entity>;
 
 #[derive(Clone)]
 pub struct State {
@@ -216,8 +220,7 @@ pub struct State {
     pub player: Entity,
     pub map: Map,
     pub screen: Screen,
-    // TODO store things that the player can change separate from the tiles so we can keep the
-    // map static.
+    pub entities: Entities,
 }
 
 // Plan:
@@ -225,13 +228,21 @@ pub struct State {
 //
 // Steps:
 // * Make walking over a tile show a "congraturation this story is happy end" screen (done)
-// * Make walking over the key open the door
+// * Make walking over the key open the door (done)
 // * Make the key require pressing all the buttons down
 // * Make walking into the portal reset time
 // * Make a fixed password reveal the key
 // * Make the people each reveal part of the password, but get angry if you asked someone else already
 // * Make the password be randomized
 
+
+fn get_effective_tile(map: Map, entities: &Entities, index: usize) -> Option<TileKind> {
+    entities.get(&index)
+        .map(|e| e.kind)
+        .or_else(|| {
+            map.tiles.get(index).copied()
+        })
+}
 
 #[derive(Clone, Copy)]
 pub enum Dir {
@@ -241,7 +252,7 @@ pub enum Dir {
     Right,
 }
 
-fn move_entity(entity: &mut Entity, map: Map, dir: Dir) {
+fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
     let mut new_x = entity.x;
     let mut new_y = entity.y;
 
@@ -253,9 +264,8 @@ fn move_entity(entity: &mut Entity, map: Map, dir: Dir) {
         Right => { new_x += W::ONE; },
     }
 
-    let index = xy_to_i(map, new_x, new_y);
-    if let Some(tile_kind) = map.tiles.get(index) {
-        match *tile_kind {
+    if let Some(tile_kind) = get_effective_tile(map, entities, xy_to_i(map, new_x, new_y)) {
+        match tile_kind {
             tile::FLOOR
             | tile::GROUND
             | tile::GRASS_GROUND
@@ -264,7 +274,11 @@ fn move_entity(entity: &mut Entity, map: Map, dir: Dir) {
             | tile::DOOR_2
             | tile::DOOR_3
             | tile::DOOR_4
-            | tile::STAIRS_DOWN => {} // Allow move to happen
+            | tile::STAIRS_DOWN
+            | tile::KEY
+            | tile::BUTTON_LIT
+            | tile::BUTTON_DARK
+            | tile::BUTTON_PRESSED => {} // Allow move to happen
             _ => return, // Don't allow move to happen
         }
     } else {
@@ -280,12 +294,12 @@ fn move_entity(entity: &mut Entity, map: Map, dir: Dir) {
 
 impl State {
     pub fn new(seed: Seed) -> State {
-        let mut rng = xs::from_seed(seed);
+        let rng = xs::from_seed(seed);
 
         let player = Entity {
             kind: 9,
             x: xy::x(2),
-            y: xy::y(2),
+            y: xy::y(5),
         };
 
         let map = if cfg!(feature = "structured_art_mode") {
@@ -299,16 +313,50 @@ impl State {
             player,
             map,
             screen: Screen::default(),
+            entities: Entities::default(),
         }
     }
 
-    pub fn move_player(&mut self, dir: Dir) {
-        move_entity(&mut self.player, self.map, dir);
+    fn add_entity(&mut self, entity: Entity) {
+        let index = xy_to_i(self.map, entity.x, entity.y);
 
-        let index = xy_to_i(self.map, self.player.x, self.player.y);
-        match self.map.tiles.get(index) {
-            Some(&tile::STAIRS_DOWN) => {
+        self.entities.insert(index, entity);
+    }
+
+    /// Returns the tile after any entities have replaced it, as opposed to the initial set of tiles.
+    fn get_effective_tile(&mut self, x: X, y: Y) -> Option<TileKind> {
+        get_effective_tile(self.map, &self.entities, xy_to_i(self.map, x, y))
+    }
+
+    pub fn move_player(&mut self, dir: Dir) {
+        match self.screen {
+            Screen::Gameplay => {},
+            Screen::Congraturation => return,
+        }
+
+        move_entity(&mut self.player, self.map, &self.entities, dir);
+
+        match self.get_effective_tile(self.player.x, self.player.y) {
+            Some(tile::STAIRS_DOWN) => {
                 self.screen = Screen::Congraturation;
+            }
+            Some(tile::KEY) => {
+                if let Some((locked_door_x, locked_door_y)) = match self.map {
+                     m if core::ptr::eq(m, &maps::HOUSES)=> Some((xy::x(2), xy::y(3))),
+                    _ => None,
+                } {
+                    self.add_entity(Entity {
+                        kind: tile::DOOR_2,
+                        x: locked_door_x,
+                        y: locked_door_y,
+                    });
+
+                    self.add_entity(Entity {
+                        kind: tile::FLOOR,
+                        x: self.player.x,
+                        y: self.player.y,
+                    });
+                }
             }
             _ => {}
         }
@@ -344,7 +392,7 @@ static CONGRATURATION_LINES: [Segment; 2] =
     ];
 
 impl State {
-    pub fn current_tiles(&self) -> (impl Iterator<Item = Tile>, [Tile; 1]) {
+    pub fn current_tiles(&self) -> (impl Iterator<Item = Tile> + use<'_>, [Tile; 1]) {
         let map_w = xy::w(self.map.width as _);
         let map_h = xy::h(self.map.width as _);
 
@@ -374,6 +422,7 @@ impl State {
             Screen::Gameplay => (
                 CameraIter {
                     map: self.map,
+                    entities: &self.entities,
                     offset_x,
                     offset_y,
                     output_width,
@@ -386,6 +435,7 @@ impl State {
             Screen::Congraturation => (
                 CameraIter {
                     map: self.map,
+                    entities: &self.entities,
                     offset_x,
                     offset_y,
                     output_width,
@@ -399,18 +449,18 @@ impl State {
     }
 }
 
-
-struct CameraIter {
+struct CameraIter<'entities> {
     tile: Tile,
     done: bool,
     map: Map,
+    entities: &'entities Entities,
     offset_x: xy::W,
     offset_y: xy::H,
     output_width: xy::W,
     output_height: xy::H,
 }
 
-impl Iterator for CameraIter {
+impl Iterator for CameraIter<'_> {
     type Item = Tile;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -418,8 +468,8 @@ impl Iterator for CameraIter {
 
         let tiles_index =
             xy_to_i(self.map, self.tile.x + self.offset_x, self.tile.y + self.offset_y);
-        if let Some(tile_kind) = self.map.tiles.get(tiles_index) {
-            self.tile.kind = *tile_kind;
+        if let Some(tile_kind) = get_effective_tile(self.map, self.entities, tiles_index) {
+            self.tile.kind = tile_kind;
 
             let output = self.tile.clone();
 

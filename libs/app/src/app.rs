@@ -88,7 +88,7 @@ fn render(commands: &mut Commands, state: &game::State) {
         Y_OFFSET + y.get().get() * gfx::tile::HEIGHT
     }
 
-    let (mut iter, sprites) = state.current_tiles();
+    let (iter, sprites) = state.current_tiles();
 
     for tile in iter {
         commands.draw_tile(
@@ -106,7 +106,7 @@ fn render(commands: &mut Commands, state: &game::State) {
         );
     }
 
-    let mut message = state.current_message();
+    let message = state.current_message();
     for segment in message {
         commands.print(
             segment.text,

@@ -14,6 +14,10 @@ pub mod tile {
     pub const STAIRS_DOWN: TileKind = 46;
     pub const GROUND: TileKind = 60;
     pub const GRASS_GROUND: TileKind = 61;
+    pub const KEY: TileKind = 80;
+    pub const BUTTON_LIT: TileKind = 84;
+    pub const BUTTON_DARK: TileKind = 85;
+    pub const BUTTON_PRESSED: TileKind = 16;
 }
 
 pub const RANK_COUNT: u8 = 13;
