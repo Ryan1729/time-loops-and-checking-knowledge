@@ -64,14 +64,20 @@ impl platform_types::State for State {
 }
 
 fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
-    if input.pressed_this_frame(Button::UP) {
-        state.move_player(Dir::Up);
+    let sfx_opt = if input.pressed_this_frame(Button::UP) {
+        state.move_player(Dir::Up)
     } else if input.pressed_this_frame(Button::DOWN) {
-        state.move_player(Dir::Down);
+        state.move_player(Dir::Down)
     } else if input.pressed_this_frame(Button::LEFT) {
-        state.move_player(Dir::Left);
+        state.move_player(Dir::Left)
     } else if input.pressed_this_frame(Button::RIGHT) {
-        state.move_player(Dir::Right);
+        state.move_player(Dir::Right)
+    } else {
+        None
+    };
+
+    if let Some(sfx) = sfx_opt {
+        speaker.request_sfx(sfx);
     }
 }
 

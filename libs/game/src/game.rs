@@ -1,5 +1,5 @@
 use models::{tile, TileKind};
-use platform_types::{command, unscaled};
+use platform_types::{SFX, command, unscaled};
 use xs::{Xs, Seed};
 
 use std::collections::HashMap;
@@ -328,38 +328,56 @@ impl State {
         get_effective_tile(self.map, &self.entities, xy_to_i(self.map, x, y))
     }
 
-    pub fn move_player(&mut self, dir: Dir) {
+    #[must_use]
+    pub fn move_player(&mut self, dir: Dir) -> Option<SFX> {
+        let mut output = None;
+
         match self.screen {
             Screen::Gameplay => {},
-            Screen::Congraturation => return,
+            Screen::Congraturation => return output,
         }
 
         move_entity(&mut self.player, self.map, &self.entities, dir);
 
-        match self.get_effective_tile(self.player.x, self.player.y) {
-            Some(tile::STAIRS_DOWN) => {
-                self.screen = Screen::Congraturation;
-            }
-            Some(tile::KEY) => {
-                if let Some((locked_door_x, locked_door_y)) = match self.map {
-                     m if core::ptr::eq(m, &maps::HOUSES)=> Some((xy::x(2), xy::y(3))),
-                    _ => None,
-                } {
-                    self.add_entity(Entity {
-                        kind: tile::DOOR_2,
-                        x: locked_door_x,
-                        y: locked_door_y,
-                    });
+        match self.map {
+             m if core::ptr::eq(m, &maps::HOUSES)=> {
+                match self.get_effective_tile(self.player.x, self.player.y) {
+                    Some(tile::STAIRS_DOWN) => {
+                        self.screen = Screen::Congraturation;
+                    }
+                    Some(tile::KEY) => {
+                        output = Some(SFX::CardSlide);
 
-                    self.add_entity(Entity {
-                        kind: tile::FLOOR,
-                        x: self.player.x,
-                        y: self.player.y,
-                    });
+                        let (locked_door_x, locked_door_y) = (xy::x(2), xy::y(3));
+
+                        self.add_entity(Entity {
+                            kind: tile::DOOR_2,
+                            x: locked_door_x,
+                            y: locked_door_y,
+                        });
+
+                        self.add_entity(Entity {
+                            kind: tile::FLOOR,
+                            x: self.player.x,
+                            y: self.player.y,
+                        });
+                    }
+                    Some(tile::BUTTON_LIT) => {
+                        output = Some(SFX::ButtonPress);
+
+                        self.add_entity(Entity {
+                            kind: tile::BUTTON_DARK,
+                            x: self.player.x,
+                            y: self.player.y,
+                        });
+                    }
+                    _ => {}
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
+
+        output
     }
 
     pub fn current_message(&self) -> impl Iterator<Item = &Segment> {
