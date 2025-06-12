@@ -214,6 +214,37 @@ pub enum Screen {
 
 type Entities = HashMap<usize, Entity>;
 
+type ButtonCount = usize;
+
+#[derive(Clone, Debug)]
+pub struct PasswordLock<const N: ButtonCount = 4> {
+    // TODO? not really a good reason to do SoA here huh? Switch to regular AoS?
+    xs: [X; N],
+    ys: [Y; N],
+    open: [bool; N],
+    press_count: ButtonCount,
+}
+
+impl <const N: ButtonCount> PasswordLock<N> {
+    fn new(mut buttons: [(X, Y); N], rng: &mut Xs) -> Self {
+        xs::shuffle(rng, &mut buttons);
+
+        let mut output = Self {
+            xs: [<_>::default(); N],
+            ys: [<_>::default(); N],
+            open: [false; N],
+            press_count: 0,
+        };
+        for i in 0..N {
+            let (x, y) = buttons[i];
+            output.xs[i] = x;
+            output.ys[i] = y;
+        }
+        dbg!(&output);
+        output
+    }
+}
+
 #[derive(Clone)]
 pub struct State {
     pub rng: Xs,
@@ -221,6 +252,7 @@ pub struct State {
     pub map: Map,
     pub screen: Screen,
     pub entities: Entities,
+    pub password_lock: PasswordLock,
 }
 
 // Plan:
@@ -229,11 +261,13 @@ pub struct State {
 // Steps:
 // * Make walking over a tile show a "congraturation this story is happy end" screen (done)
 // * Make walking over the key open the door (done)
-// * Make the key require pressing all the buttons down
+// * Make the key require pressing all the buttons down (done)
+// * Make a fixed password reveal the key (done)
+// * Make the password be randomized (done)
 // * Make walking into the portal reset time
-// * Make a fixed password reveal the key
 // * Make the people each reveal part of the password, but get angry if you asked someone else already
-// * Make the password be randomized
+// * Make in-game time eventually reset over some number of frames
+//     * Show current frame count first
 
 
 fn get_effective_tile(map: Map, entities: &Entities, index: usize) -> Option<TileKind> {
@@ -294,7 +328,7 @@ fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
 
 impl State {
     pub fn new(seed: Seed) -> State {
-        let rng = xs::from_seed(seed);
+        let mut rng = xs::from_seed(seed);
 
         let player = Entity {
             kind: 9,
@@ -314,6 +348,15 @@ impl State {
             map,
             screen: Screen::default(),
             entities: Entities::default(),
+            password_lock: PasswordLock::new(
+                [
+                    (xy::x(6), xy::y(13)),
+                    (xy::x(7), xy::y(14)),
+                    (xy::x(6), xy::y(15)),
+                    (xy::x(5), xy::y(14)),
+                ],
+                &mut rng
+            ),
         }
     }
 
@@ -321,6 +364,12 @@ impl State {
         let index = xy_to_i(self.map, entity.x, entity.y);
 
         self.entities.insert(index, entity);
+    }
+
+    fn remove_entity(&mut self, x: X, y: Y) -> Option<Entity> {
+        let index = xy_to_i(self.map, x, y);
+
+        self.entities.remove(&index)
     }
 
     /// Returns the tile after any entities have replaced it, as opposed to the initial set of tiles.
@@ -341,14 +390,15 @@ impl State {
 
         match self.map {
              m if core::ptr::eq(m, &maps::HOUSES)=> {
+                let (locked_door_x, locked_door_y) = (xy::x(2), xy::y(3));
+                let (key_x, key_y) = (xy::x(6), xy::y(14));
+
                 match self.get_effective_tile(self.player.x, self.player.y) {
                     Some(tile::STAIRS_DOWN) => {
                         self.screen = Screen::Congraturation;
                     }
                     Some(tile::KEY) => {
                         output = Some(SFX::CardSlide);
-
-                        let (locked_door_x, locked_door_y) = (xy::x(2), xy::y(3));
 
                         self.add_entity(Entity {
                             kind: tile::DOOR_2,
@@ -365,11 +415,53 @@ impl State {
                     Some(tile::BUTTON_LIT) => {
                         output = Some(SFX::ButtonPress);
 
-                        self.add_entity(Entity {
-                            kind: tile::BUTTON_DARK,
-                            x: self.player.x,
-                            y: self.player.y,
-                        });
+                        let button_count = self.password_lock.open.len() as ButtonCount;
+                        for i in 0..button_count {
+                            if self.password_lock.open[i] {
+                                continue
+                            }
+
+                            if self.password_lock.xs[i] == self.player.x
+                            && self.password_lock.ys[i] == self.player.y
+                            {
+                                if self.password_lock.press_count == i {
+                                    self.password_lock.open[i] = true;
+                                }
+                                self.password_lock.press_count += 1;
+
+                                self.add_entity(Entity {
+                                    kind: tile::BUTTON_DARK,
+                                    x: self.player.x,
+                                    y: self.player.y,
+                                });
+
+                                break
+                            }
+                        }
+
+                        // If lock is open
+                        if self.password_lock.open.iter().all(|&b| b) {
+                            self.add_entity(Entity {
+                                kind: tile::KEY,
+                                x: key_x,
+                                y: key_y,
+                            });
+                        } else {
+                            // If all the buttons were pressed without unlocking
+                            if self.password_lock.press_count >= button_count {
+                                // Reset all the buttons because a mistake was made
+                                // entering it.
+                                for i in 0..button_count {
+                                    self.password_lock.open[i] = false;
+
+                                    self.remove_entity(
+                                        self.password_lock.xs[i],
+                                        self.password_lock.ys[i],
+                                    );
+                                }
+                                self.password_lock.press_count = 0;
+                            }
+                        }
                     }
                     _ => {}
                 }
