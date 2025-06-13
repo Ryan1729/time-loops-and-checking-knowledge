@@ -18,6 +18,7 @@ pub mod tile {
     pub const BUTTON_LIT: TileKind = 84;
     pub const BUTTON_DARK: TileKind = 85;
     pub const BUTTON_PRESSED: TileKind = 16;
+    pub const PORTAL: TileKind = 113;
 }
 
 pub const RANK_COUNT: u8 = 13;

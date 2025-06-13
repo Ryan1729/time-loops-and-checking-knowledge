@@ -245,16 +245,6 @@ impl <const N: ButtonCount> PasswordLock<N> {
     }
 }
 
-#[derive(Clone)]
-pub struct State {
-    pub rng: Xs,
-    pub player: Entity,
-    pub map: Map,
-    pub screen: Screen,
-    pub entities: Entities,
-    pub password_lock: PasswordLock,
-}
-
 // Plan:
 // Have a short 4 direction password you can type out on switches on the ground to win the game.
 //
@@ -264,11 +254,13 @@ pub struct State {
 // * Make the key require pressing all the buttons down (done)
 // * Make a fixed password reveal the key (done)
 // * Make the password be randomized (done)
-// * Make walking into the portal reset time
+// * Make walking into the portal reset time (done)
 // * Make the people each reveal part of the password, but get angry if you asked someone else already
 // * Make in-game time eventually reset over some number of frames
 //     * Show current frame count first
-
+// * Have a character move around, based on the frame time
+// * Have the moving character push something, (a large pot I guess?) in front of a door so a room is not reachable at
+//   certain in-game times
 
 fn get_effective_tile(map: Map, entities: &Entities, index: usize) -> Option<TileKind> {
     entities.get(&index)
@@ -312,7 +304,8 @@ fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
             | tile::KEY
             | tile::BUTTON_LIT
             | tile::BUTTON_DARK
-            | tile::BUTTON_PRESSED => {} // Allow move to happen
+            | tile::BUTTON_PRESSED
+            | tile::PORTAL => {} // Allow move to happen
             _ => return, // Don't allow move to happen
         }
     } else {
@@ -326,6 +319,16 @@ fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
     entity.y = new_y.clamp(Y::ZERO, max_map_y);
 }
 
+pub struct State {
+    pub rng: Xs,
+    pub player: Entity,
+    pub map: Map,
+    pub screen: Screen,
+    pub entities: Entities,
+    pub password_lock: PasswordLock,
+}
+
+
 impl State {
     pub fn new(seed: Seed) -> State {
         let mut rng = xs::from_seed(seed);
@@ -336,10 +339,29 @@ impl State {
             y: xy::y(5),
         };
 
-        let map = if cfg!(feature = "structured_art_mode") {
-            &maps::STRUCTURED_ART
+        let (map, buttons) = if cfg!(feature = "structured_art_mode") {
+            (
+                &maps::STRUCTURED_ART,
+                // Bogus values we don't expect to affect anything
+                // TODO Adjust data model so we don't need these bogus values
+                // (Heap allocate these buttons? Or just use an enum?)
+                [
+                    (xy::x(200), xy::y(200)),
+                    (xy::x(200), xy::y(200)),
+                    (xy::x(200), xy::y(200)),
+                    (xy::x(200), xy::y(200)),
+                ]
+            )
         } else {
-            &maps::HOUSES
+            (
+                &maps::HOUSES,
+                [
+                    (xy::x(6), xy::y(13)),
+                    (xy::x(7), xy::y(14)),
+                    (xy::x(6), xy::y(15)),
+                    (xy::x(5), xy::y(14)),
+                ],
+            )
         };
 
         State {
@@ -349,15 +371,15 @@ impl State {
             screen: Screen::default(),
             entities: Entities::default(),
             password_lock: PasswordLock::new(
-                [
-                    (xy::x(6), xy::y(13)),
-                    (xy::x(7), xy::y(14)),
-                    (xy::x(6), xy::y(15)),
-                    (xy::x(5), xy::y(14)),
-                ],
+                buttons,
                 &mut rng
             ),
         }
+    }
+
+    fn reset_time(&mut self) {
+        // New seed for the rng, so different resets are slightly different
+        *self = State::new(xs::new_seed(&mut self.rng));
     }
 
     fn add_entity(&mut self, entity: Entity) {
@@ -394,6 +416,11 @@ impl State {
                 let (key_x, key_y) = (xy::x(6), xy::y(14));
 
                 match self.get_effective_tile(self.player.x, self.player.y) {
+                    Some(tile::PORTAL) => {
+                        output = Some(SFX::CardPlace);
+
+                        self.reset_time();
+                    }
                     Some(tile::STAIRS_DOWN) => {
                         self.screen = Screen::Congraturation;
                     }
