@@ -1,4 +1,4 @@
-use game::{Dir};
+use game::{Dir, RenderInfo};
 use gfx::{Commands};
 use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
@@ -94,9 +94,13 @@ fn render(commands: &mut Commands, state: &game::State) {
         Y_OFFSET + y.get().get() * gfx::tile::HEIGHT
     }
 
-    let (iter, sprites) = state.current_tiles();
+    let RenderInfo {
+        tiles,
+        text_boxes,
+        message_segments,
+    } = state.render_info();
 
-    for tile in iter {
+    for tile in tiles {
         commands.draw_tile(
             tile.kind,
             to_x(tile.x),
@@ -104,16 +108,16 @@ fn render(commands: &mut Commands, state: &game::State) {
         );
     }
 
-    for tile in sprites {
-        commands.draw_tile(
-            tile.kind,
-            to_x(tile.x),
-            to_y(tile.y),
+    for text_box in text_boxes {
+        commands.draw_text_box(
+            to_x(text_box.min_x),
+            to_y(text_box.min_y),
+            to_x(text_box.max_x),
+            to_y(text_box.max_y),
         );
     }
 
-    let message = state.current_message();
-    for segment in message {
+    for segment in message_segments {
         commands.print(
             segment.text,
             to_x(segment.x),

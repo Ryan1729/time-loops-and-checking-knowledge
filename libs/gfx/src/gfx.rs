@@ -131,6 +131,16 @@ impl Commands {
             })
         );
     }
+
+    pub fn draw_text_box(
+        &mut self,
+        min_x: unscaled::X,
+        min_y: unscaled::Y,
+        max_x: unscaled::X,
+        max_y: unscaled::Y,
+    ) {
+        // TODO
+    }
 }
 
 pub mod tile {

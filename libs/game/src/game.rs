@@ -182,8 +182,15 @@ pub mod xy {
     shared_impl!{
         X Y W H
     }
+
+    pub struct Rect {
+        pub min_x: X,
+        pub min_y: Y,
+        pub max_x: X,
+        pub max_y: Y,
+    }
 }
-pub use xy::{X, Y, W, H};
+pub use xy::{X, Y, W, H, Rect};
 
 #[derive(Clone, Default)]
 pub struct Entity {
@@ -242,6 +249,13 @@ impl <const N: ButtonCount> PasswordLock<N> {
         }
         dbg!(&output);
         output
+    }
+
+    fn reset(&mut self) {
+        for i in 0..N {
+            self.open[i] = false;
+        }
+        self.press_count = 0;
     }
 }
 
@@ -378,8 +392,16 @@ impl State {
     }
 
     fn reset_time(&mut self) {
-        // New seed for the rng, so different resets are slightly different
-        *self = State::new(xs::new_seed(&mut self.rng));
+        let mut password_lock = self.password_lock.clone();
+        // Retain the combination for this game across resets.
+        password_lock.reset();
+
+        // New seed for the rng, so different resets are slightly different.
+        *self = State::new(
+            xs::new_seed(&mut self.rng)
+        );
+
+        self.password_lock = password_lock;
     }
 
     fn add_entity(&mut self, entity: Entity) {
@@ -478,15 +500,14 @@ impl State {
                             if self.password_lock.press_count >= button_count {
                                 // Reset all the buttons because a mistake was made
                                 // entering it.
-                                for i in 0..button_count {
-                                    self.password_lock.open[i] = false;
+                                self.password_lock.reset();
 
+                                for i in 0..button_count {
                                     self.remove_entity(
                                         self.password_lock.xs[i],
                                         self.password_lock.ys[i],
                                     );
                                 }
-                                self.password_lock.press_count = 0;
                             }
                         }
                     }
@@ -497,14 +518,6 @@ impl State {
         }
 
         output
-    }
-
-    pub fn current_message(&self) -> impl Iterator<Item = &Segment> {
-        let output: &'static [Segment] = match self.screen {
-            Screen::Gameplay => &[],
-            Screen::Congraturation => &CONGRATURATION_LINES,
-        };
-        output.into_iter()
     }
 }
 
@@ -528,8 +541,18 @@ static CONGRATURATION_LINES: [Segment; 2] =
         },
     ];
 
+
+pub struct RenderInfo<'tiles> {
+    pub tiles: CurrentTiles<'tiles>,
+    pub text_boxes: TextBoxes,
+    pub message_segments: MessageSegments,
+}
+
+pub type TextBoxes = core::option::IntoIter<Rect>;
+pub type MessageSegments = std::slice::Iter<'static, Segment>;
+
 impl State {
-    pub fn current_tiles(&self) -> (impl Iterator<Item = Tile> + use<'_>, [Tile; 1]) {
+    pub fn render_info(&self) -> RenderInfo<'_> {
         let map_w = xy::w(self.map.width as _);
         let map_h = xy::h(self.map.width as _);
 
@@ -547,42 +570,74 @@ impl State {
         offset_x = offset_x.clamp(W::ZERO, map_w - output_width);
         offset_y = offset_y.clamp(H::ZERO, map_h - output_height);
 
-        let sprites = [
-            Tile {
-                kind: self.player.kind,
-                x: self.player.x - offset_x,
-                y: self.player.y - offset_y,
-            },
-        ];
+        let mut camera = CameraIter {
+            map: self.map,
+            entities: &self.entities,
+            offset_x,
+            offset_y,
+            output_width,
+            output_height,
+            done: false,
+            tile: Tile::default(),
+        };
 
-        match self.screen {
-            Screen::Gameplay => (
-                CameraIter {
-                    map: self.map,
-                    entities: &self.entities,
-                    offset_x,
-                    offset_y,
-                    output_width,
-                    output_height,
-                    done: false,
-                    tile: Tile::default(),
-                },
-                sprites
-            ),
-            Screen::Congraturation => (
-                CameraIter {
-                    map: self.map,
-                    entities: &self.entities,
-                    offset_x,
-                    offset_y,
-                    output_width,
-                    output_height,
-                    done: true, // No tiles needed
-                    tile: Tile::default(),
-                },
-                sprites
-            ),
+        let text_box = match self.screen {
+            Screen::Gameplay => {
+                // TODO Show this conditionally, and in the right size based on the text
+                Some(Rect {
+                    min_x: xy::x(0),
+                    min_y: xy::y(40),
+                    max_x: xy::x(40),
+                    max_y: xy::y(42),
+                })
+            },
+            Screen::Congraturation => {
+                // No tiles needed
+                camera.done = true;
+                None
+            },
+        };
+
+        let player = Some(Tile {
+            kind: self.player.kind,
+            x: self.player.x - offset_x,
+            y: self.player.y - offset_y,
+        });
+
+        let message_segments: &'static [Segment] = match self.screen {
+            Screen::Gameplay => &[],
+            Screen::Congraturation => &CONGRATURATION_LINES,
+        };
+
+        RenderInfo {
+            tiles: CurrentTiles {
+                camera,
+                player,
+            },
+            text_boxes: text_box.into_iter(),
+            message_segments: message_segments.into_iter(),
         }
+    }
+}
+
+pub struct CurrentTiles<'camera> {
+    camera: CameraIter<'camera>,
+    player: Option<Tile>,
+}
+
+impl Iterator for CurrentTiles<'_> {
+    type Item = Tile;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(t) = self.camera.next() {
+            return Some(t)
+        }
+
+        if let Some(t) = self.player.take() {
+            return Some(t)
+        }
+
+        None
     }
 }
 
