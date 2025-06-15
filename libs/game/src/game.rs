@@ -584,11 +584,12 @@ impl State {
         let text_box = match self.screen {
             Screen::Gameplay => {
                 // TODO Show this conditionally, and in the right size based on the text
+                let min_y = xy::y(0) + output_height;
                 Some(Rect {
                     min_x: xy::x(0),
-                    min_y: xy::y(40),
-                    max_x: xy::x(40),
-                    max_y: xy::y(42),
+                    min_y,
+                    max_x: xy::x(0) + output_width,
+                    max_y: min_y + xy::h(7),
                 })
             },
             Screen::Congraturation => {

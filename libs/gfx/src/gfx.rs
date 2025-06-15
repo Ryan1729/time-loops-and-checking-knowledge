@@ -99,28 +99,6 @@ impl Commands {
         x: unscaled::X,
         y: unscaled::Y
     ) {
-        fn id_to_xy(tile_id: TileId) -> sprite::XY {
-            type Inner = sprite::Inner;
-            let sprite_number = Inner::from(tile_id);
-            // + 1 for the apron
-            const TILE_SIZE: Inner = tile::WIDTH.get() + 1;
-            const TILES_PER_ROW: Inner = 14;
-
-            const TILE_BASE_X: Inner = 1;
-            const TILE_BASE_Y: Inner = 1;
-
-            sprite::XY {
-                x: sprite::X(
-                    TILE_BASE_X +
-                    (sprite_number % TILES_PER_ROW) * TILE_SIZE
-                ),
-                y: sprite::Y(
-                    TILE_BASE_Y +
-                    (sprite_number / TILES_PER_ROW) * TILE_SIZE
-                ),
-            }
-        }
-
         self.sspr(
             id_to_xy(tile_id),
             Rect::from_unscaled(unscaled::Rect {
@@ -139,9 +117,65 @@ impl Commands {
         max_x: unscaled::X,
         max_y: unscaled::Y,
     ) {
-        // TODO
+        const TOP_LEFT: TileId = TILES_PER_ROW * 10;
+        const TOP: TileId = TOP_LEFT + 1;
+        const TOP_RIGHT: TileId = TOP + 1;
+
+        const MIDDLE_LEFT: TileId = TOP_LEFT + TILES_PER_ROW;
+        const MIDDLE: TileId = TOP + TILES_PER_ROW;
+        const MIDDLE_RIGHT: TileId = TOP_RIGHT + TILES_PER_ROW;
+
+        const BOTTOM_LEFT: TileId = MIDDLE_LEFT + TILES_PER_ROW;
+        const BOTTOM: TileId = MIDDLE + TILES_PER_ROW;
+        const BOTTOM_RIGHT: TileId = MIDDLE_RIGHT + TILES_PER_ROW;
+
+        let after_left_corner = min_x.saturating_add(tile::WIDTH);
+        let before_right_corner = max_x.saturating_sub(tile::WIDTH);
+
+        let below_top_corner = min_y.saturating_add(tile::HEIGHT);
+        let above_bottom_corner = max_y.saturating_sub(tile::HEIGHT);
+
+        {
+            let mut fill_y = below_top_corner;
+            while fill_y < above_bottom_corner {
+                let mut fill_x = after_left_corner;
+                while fill_x < before_right_corner {
+                    self.draw_tile(MIDDLE, fill_x, fill_y);
+
+                    fill_x += tile::WIDTH;
+                }
+                fill_y += tile::HEIGHT;
+            }
+        }
+
+        {
+            let mut fill_x = after_left_corner;
+            while fill_x < before_right_corner {
+                self.draw_tile(TOP, fill_x, min_y);
+                self.draw_tile(BOTTOM, fill_x, above_bottom_corner);
+    
+                fill_x += tile::WIDTH;
+            }
+        }
+
+        {
+            let mut fill_y = below_top_corner;
+            while fill_y < above_bottom_corner {
+                self.draw_tile(MIDDLE_LEFT, min_x, fill_y);
+                self.draw_tile(MIDDLE_RIGHT, before_right_corner, fill_y);
+    
+                fill_y += tile::HEIGHT;
+            }
+        }
+
+        self.draw_tile(TOP_LEFT, min_x, min_y);
+        self.draw_tile(TOP_RIGHT, before_right_corner, min_y);
+        self.draw_tile(BOTTOM_LEFT, min_x, above_bottom_corner);
+        self.draw_tile(BOTTOM_RIGHT, before_right_corner, above_bottom_corner);
     }
 }
+
+const TILES_PER_ROW: TileId = 14;
 
 pub mod tile {
     use super::*;
@@ -150,6 +184,28 @@ pub mod tile {
 
     pub const WIDTH: W = W(8);
     pub const HEIGHT: H = H(8);
+}
+
+fn id_to_xy(tile_id: TileId) -> sprite::XY {
+    type Inner = sprite::Inner;
+    let sprite_number = Inner::from(tile_id);
+
+    // + 1 for the apron
+    const TILE_SIZE: Inner = tile::WIDTH.get() + 1;
+
+    const TILE_BASE_X: Inner = 1;
+    const TILE_BASE_Y: Inner = 1;
+
+    sprite::XY {
+        x: sprite::X(
+            TILE_BASE_X +
+            (sprite_number % TILES_PER_ROW) * TILE_SIZE
+        ),
+        y: sprite::Y(
+            TILE_BASE_Y +
+            (sprite_number / TILES_PER_ROW) * TILE_SIZE
+        ),
+    }
 }
 
 pub mod card {
