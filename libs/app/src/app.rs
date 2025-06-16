@@ -76,6 +76,18 @@ fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
         None
     };
 
+    if input.pressed_this_frame(Button::A) {
+        if input.gamepad.contains(Button::UP) {
+            state.interact(Dir::Up)
+        } else if input.gamepad.contains(Button::DOWN) {
+            state.interact(Dir::Down)
+        } else if input.gamepad.contains(Button::LEFT) {
+            state.interact(Dir::Left)
+        } else if input.gamepad.contains(Button::RIGHT) {
+            state.interact(Dir::Right)
+        }
+    }
+
     if let Some(sfx) = sfx_opt {
         speaker.request_sfx(sfx);
     }

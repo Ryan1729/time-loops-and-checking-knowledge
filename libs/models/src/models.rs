@@ -10,6 +10,12 @@ pub mod tile {
     pub const DOOR_2: TileKind = 33;
     pub const DOOR_3: TileKind = 128;
     pub const DOOR_4: TileKind = 134;
+    pub const PERSON_0: TileKind = 4;
+    pub const PERSON_1: TileKind = 5;
+    pub const PERSON_2: TileKind = 6;
+    pub const PERSON_3: TileKind = 7;
+    pub const PERSON_4: TileKind = 8;
+    pub const PERSON_5: TileKind = 9;
     pub const FLOOR: TileKind = 15;
     pub const STAIRS_DOWN: TileKind = 46;
     pub const GROUND: TileKind = 60;

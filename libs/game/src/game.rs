@@ -221,6 +221,7 @@ pub enum Screen {
 
 type Entities = HashMap<usize, Entity>;
 
+type ButtonIndex = usize;
 type ButtonCount = usize;
 
 #[derive(Clone, Debug)]
@@ -228,24 +229,27 @@ pub struct PasswordLock<const N: ButtonCount = 4> {
     // TODO? not really a good reason to do SoA here huh? Switch to regular AoS?
     xs: [X; N],
     ys: [Y; N],
+    names: [&'static str; N],
     open: [bool; N],
     press_count: ButtonCount,
 }
 
 impl <const N: ButtonCount> PasswordLock<N> {
-    fn new(mut buttons: [(X, Y); N], rng: &mut Xs) -> Self {
+    fn new(mut buttons: [(X, Y, &'static str); N], rng: &mut Xs) -> Self {
         xs::shuffle(rng, &mut buttons);
 
         let mut output = Self {
             xs: [<_>::default(); N],
             ys: [<_>::default(); N],
+            names: ["unlabeled button"; N],
             open: [false; N],
             press_count: 0,
         };
         for i in 0..N {
-            let (x, y) = buttons[i];
+            let (x, y, name) = buttons[i];
             output.xs[i] = x;
             output.ys[i] = y;
+            output.names[i] = name;
         }
         dbg!(&output);
         output
@@ -292,17 +296,20 @@ pub enum Dir {
     Right,
 }
 
-fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
-    let mut new_x = entity.x;
-    let mut new_y = entity.y;
-
+fn xy_in_dir(dir: Dir, mut x: X, mut y: Y) -> (X, Y) {
     use Dir::*;
     match dir {
-        Up => { new_y -= H::ONE; },
-        Down => { new_y += H::ONE; },
-        Left => { new_x -= W::ONE; },
-        Right => { new_x += W::ONE; },
+        Up => { y -= H::ONE; },
+        Down => { y += H::ONE; },
+        Left => { x -= W::ONE; },
+        Right => { x += W::ONE; },
     }
+
+    (x, y)
+}
+
+fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
+    let (new_x, new_y) = xy_in_dir(dir, entity.x, entity.y);
 
     if let Some(tile_kind) = get_effective_tile(map, entities, xy_to_i(map, new_x, new_y)) {
         match tile_kind {
@@ -333,6 +340,15 @@ fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
     entity.y = new_y.clamp(Y::ZERO, max_map_y);
 }
 
+#[derive(Default)]
+enum MessageInfo {
+    #[default]
+    NoMessage,
+    PasswordReveal {
+        index: ButtonIndex,
+    },
+}
+
 pub struct State {
     pub rng: Xs,
     pub player: Entity,
@@ -340,8 +356,8 @@ pub struct State {
     pub screen: Screen,
     pub entities: Entities,
     pub password_lock: PasswordLock,
+    pub message_info: MessageInfo,
 }
-
 
 impl State {
     pub fn new(seed: Seed) -> State {
@@ -360,20 +376,20 @@ impl State {
                 // TODO Adjust data model so we don't need these bogus values
                 // (Heap allocate these buttons? Or just use an enum?)
                 [
-                    (xy::x(200), xy::y(200)),
-                    (xy::x(200), xy::y(200)),
-                    (xy::x(200), xy::y(200)),
-                    (xy::x(200), xy::y(200)),
+                    (xy::x(200), xy::y(200), "???"),
+                    (xy::x(200), xy::y(200), "???"),
+                    (xy::x(200), xy::y(200), "???"),
+                    (xy::x(200), xy::y(200), "???"),
                 ]
             )
         } else {
             (
                 &maps::HOUSES,
                 [
-                    (xy::x(6), xy::y(13)),
-                    (xy::x(7), xy::y(14)),
-                    (xy::x(6), xy::y(15)),
-                    (xy::x(5), xy::y(14)),
+                    (xy::x(6), xy::y(13), "north"),
+                    (xy::x(7), xy::y(14), "east"),
+                    (xy::x(6), xy::y(15), "south"),
+                    (xy::x(5), xy::y(14), "west"),
                 ],
             )
         };
@@ -388,6 +404,7 @@ impl State {
                 buttons,
                 &mut rng
             ),
+            message_info: MessageInfo::default(),
         }
     }
 
@@ -422,8 +439,41 @@ impl State {
     }
 
     #[must_use]
+    pub fn interact(&mut self, dir: Dir) {
+        let (target_x, target_y) = xy_in_dir(dir, self.player.x, self.player.y);
+
+        match self.get_effective_tile(target_x, target_y) {
+            Some(tile::PERSON_0) => {
+                self.message_info = MessageInfo::PasswordReveal {
+                    index: 0,
+                };
+            }
+            Some(tile::PERSON_1) => {}
+            Some(tile::PERSON_2) => {
+                self.message_info = MessageInfo::PasswordReveal {
+                    index: 1,
+                };
+            }
+            Some(tile::PERSON_3) => {
+                self.message_info = MessageInfo::PasswordReveal {
+                    index: 2,
+                };
+            }
+            Some(tile::PERSON_4) => {
+                self.message_info = MessageInfo::PasswordReveal {
+                    index: 3,
+                };
+            }
+            None => {}
+            _ => {}
+        }
+    }
+
+    #[must_use]
     pub fn move_player(&mut self, dir: Dir) -> Option<SFX> {
         let mut output = None;
+
+        self.message_info = MessageInfo::NoMessage;
 
         match self.screen {
             Screen::Gameplay => {},
@@ -527,6 +577,14 @@ pub struct Segment {
     pub y: Y,
 }
 
+impl Segment {
+    const DEFAULT: Self = Self {
+        text: b"",
+        x: xy::x(0),
+        y: xy::y(0),
+    };
+}
+
 static CONGRATURATION_LINES: [Segment; 2] =
     [
         Segment {
@@ -541,6 +599,40 @@ static CONGRATURATION_LINES: [Segment; 2] =
         },
     ];
 
+/// This is only for the HOUSES map.
+// TODO make this depend on the map, to be less foot-gunny
+const TEXT_BOX_TOP: Y = xy::y(24);
+const TEXT_BOX_FIRST_LINE: Y = xy::y(25);
+
+struct SegmentSlice {
+    segments: [Segment; 16],
+    length: usize,
+}
+
+impl SegmentSlice {
+    fn as_slice(&self) -> &[Segment] {
+        &self.segments[..self.length]
+    }
+}
+
+static MISSING_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"missing_password_reveal_message");
+
+const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
+    let mut segments = [Segment::DEFAULT; 16];
+    let mut length = 0;
+    // TODO: split on words and add more segments if needed
+    segments[length] = Segment {
+        text: s,
+        x: xy::x(1),
+        y: TEXT_BOX_FIRST_LINE,
+    };
+    length += 1;
+
+    SegmentSlice {
+        segments,
+        length,
+    }
+}
 
 pub struct RenderInfo<'tiles> {
     pub tiles: CurrentTiles<'tiles>,
@@ -557,7 +649,7 @@ impl State {
         let map_h = xy::h(self.map.width as _);
 
         let output_width = xy::w(32).clamp(W::ZERO, map_w);
-        let output_height = xy::h(24).clamp(H::ZERO, map_h);
+        let output_height = (TEXT_BOX_TOP - xy::y(0)).clamp(H::ZERO, map_h);
 
         let mut offset_x: W = self.player.x - (X::ZERO + output_width.halve());
         let mut offset_y: H = self.player.y - (Y::ZERO + output_height.halve());
@@ -581,16 +673,32 @@ impl State {
             tile: Tile::default(),
         };
 
+        let message_segments: &'static [Segment] = match (self.screen, &self.message_info) {
+            (Screen::Congraturation, _) => &CONGRATURATION_LINES,
+            (Screen::Gameplay, &MessageInfo::NoMessage) => {&[]},
+            (Screen::Gameplay, &MessageInfo::PasswordReveal { index, }) => {
+                match (self.password_lock.names[index], index) {
+                    // TODO fill in 16 static messages (4 button names times 4 expected index values)
+                    _ => MISSING_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                }
+            },
+        };
+
         let text_box = match self.screen {
             Screen::Gameplay => {
-                // TODO Show this conditionally, and in the right size based on the text
-                let min_y = xy::y(0) + output_height;
-                Some(Rect {
-                    min_x: xy::x(0),
-                    min_y,
-                    max_x: xy::x(0) + output_width,
-                    max_y: min_y + xy::h(7),
-                })
+                match self.message_info {
+                    MessageInfo::NoMessage => None,
+                    _ => {
+                        // TODO? Modify rect size based on the text
+                        let min_y = xy::y(0) + output_height;
+                        Some(Rect {
+                            min_x: xy::x(0),
+                            min_y,
+                            max_x: xy::x(0) + output_width,
+                            max_y: min_y + xy::h(7),
+                        })
+                    }
+                }
             },
             Screen::Congraturation => {
                 // No tiles needed
@@ -604,11 +712,6 @@ impl State {
             x: self.player.x - offset_x,
             y: self.player.y - offset_y,
         });
-
-        let message_segments: &'static [Segment] = match self.screen {
-            Screen::Gameplay => &[],
-            Screen::Congraturation => &CONGRATURATION_LINES,
-        };
 
         RenderInfo {
             tiles: CurrentTiles {
