@@ -448,12 +448,12 @@ impl State {
                     index: 0,
                 };
             }
-            Some(tile::PERSON_1) => {}
-            Some(tile::PERSON_2) => {
+            Some(tile::PERSON_1) => {
                 self.message_info = MessageInfo::PasswordReveal {
                     index: 1,
                 };
             }
+            Some(tile::PERSON_2) => {}
             Some(tile::PERSON_3) => {
                 self.message_info = MessageInfo::PasswordReveal {
                     index: 2,
@@ -615,6 +615,22 @@ impl SegmentSlice {
     }
 }
 
+static NORTH_0_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the north button first");
+static NORTH_1_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the north button second");
+static NORTH_2_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the north button third");
+static NORTH_3_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the north button fourth");
+static EAST_0_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the east button first");
+static EAST_1_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the east button second");
+static EAST_2_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the east button third");
+static EAST_3_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the east button fourth");
+static SOUTH_0_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the south button first");
+static SOUTH_1_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the south button second");
+static SOUTH_2_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the south button third");
+static SOUTH_3_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the south button fourth");
+static WEST_0_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button first");
+static WEST_1_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button second");
+static WEST_2_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button third");
+static WEST_3_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button fourth");
 static MISSING_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"missing_password_reveal_message");
 
 const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
@@ -678,7 +694,22 @@ impl State {
             (Screen::Gameplay, &MessageInfo::NoMessage) => {&[]},
             (Screen::Gameplay, &MessageInfo::PasswordReveal { index, }) => {
                 match (self.password_lock.names[index], index) {
-                    // TODO fill in 16 static messages (4 button names times 4 expected index values)
+                    ("north", 0) => NORTH_0_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("north", 1) => NORTH_1_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("north", 2) => NORTH_2_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("north", 3) => NORTH_3_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("west", 0) => WEST_0_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("west", 1) => WEST_1_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("west", 2) => WEST_2_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("west", 3) => WEST_3_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("south", 0) => SOUTH_0_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("south", 1) => SOUTH_1_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("south", 2) => SOUTH_2_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("south", 3) => SOUTH_3_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("east", 0) => EAST_0_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("east", 1) => EAST_1_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("east", 2) => EAST_2_PASSWORD_REVEAL_MESSAGE.as_slice(),
+                    ("east", 3) => EAST_3_PASSWORD_REVEAL_MESSAGE.as_slice(),
                     _ => MISSING_PASSWORD_REVEAL_MESSAGE.as_slice(),
                 }
             },
