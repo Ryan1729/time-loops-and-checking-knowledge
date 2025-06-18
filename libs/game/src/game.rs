@@ -41,13 +41,22 @@ pub mod xy {
         }
     }
 
-    impl core::ops::AddAssign<W> for X {
-        fn add_assign(&mut self, other: W) {
-            self.0 = self.0.saturating_add(other.0);
-            if self.0 > MAX_W_INNER {
-                self.0 = MAX_W_INNER;
-            }
+    pub const fn const_add_assign_w(x: &mut X, w: W) {
+        x.0 = x.0.saturating_add(w.0);
+        if x.0 > MAX_W_INNER {
+            x.0 = MAX_W_INNER;
         }
+    }
+
+    impl core::ops::AddAssign<W> for X {
+        fn add_assign(&mut self, w: W) {
+            const_add_assign_w(self, w)
+        }
+    }
+
+    pub const fn const_add_w(mut x: X, w: W) -> X {
+        const_add_assign_w(&mut x, w);
+        x
     }
 
     impl core::ops::Add<W> for X {
@@ -115,13 +124,22 @@ pub mod xy {
         }
     }
 
-    impl core::ops::AddAssign<H> for Y {
-        fn add_assign(&mut self, other: H) {
-            self.0 = self.0.saturating_add(other.0);
-            if self.0 > MAX_H_INNER {
-                self.0 = MAX_H_INNER;
-            }
+    pub const fn const_add_assign_h(y: &mut Y, h: H) {
+        y.0 = y.0.saturating_add(h.0);
+        if y.0 > MAX_H_INNER {
+            y.0 = MAX_H_INNER;
         }
+    }
+
+    impl core::ops::AddAssign<H> for Y {
+        fn add_assign(&mut self, h: H) {
+            const_add_assign_h(self, h)
+        }
+    }
+
+    pub const fn const_add_h(mut y: Y, h: H) -> Y {
+        const_add_assign_h(&mut y, h);
+        y
     }
 
     impl core::ops::Add<H> for Y {
@@ -341,12 +359,13 @@ fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
 }
 
 #[derive(Default)]
-enum MessageInfo {
+pub enum MessageInfo {
     #[default]
     NoMessage,
     PasswordReveal {
         index: ButtonIndex,
     },
+    PasswordRevealRefused,
 }
 
 pub struct State {
@@ -357,6 +376,7 @@ pub struct State {
     pub entities: Entities,
     pub password_lock: PasswordLock,
     pub message_info: MessageInfo,
+    pub previous_password_reveal_index: Option<usize>,
 }
 
 impl State {
@@ -405,6 +425,7 @@ impl State {
                 &mut rng
             ),
             message_info: MessageInfo::default(),
+            previous_password_reveal_index: <_>::default(),
         }
     }
 
@@ -442,27 +463,33 @@ impl State {
     pub fn interact(&mut self, dir: Dir) {
         let (target_x, target_y) = xy_in_dir(dir, self.player.x, self.player.y);
 
+        macro_rules! ask_for_password {
+            ($index: expr) => {
+                if self.previous_password_reveal_index == Some($index)
+                || self.previous_password_reveal_index == None {
+                    self.message_info = MessageInfo::PasswordReveal {
+                        index: $index,
+                    };
+                    self.previous_password_reveal_index = Some($index);
+                } else {
+                    self.message_info = MessageInfo::PasswordRevealRefused;
+                }
+            }
+        }
+
         match self.get_effective_tile(target_x, target_y) {
             Some(tile::PERSON_0) => {
-                self.message_info = MessageInfo::PasswordReveal {
-                    index: 0,
-                };
+                ask_for_password!(0)
             }
             Some(tile::PERSON_1) => {
-                self.message_info = MessageInfo::PasswordReveal {
-                    index: 1,
-                };
+                ask_for_password!(1)
             }
             Some(tile::PERSON_2) => {}
             Some(tile::PERSON_3) => {
-                self.message_info = MessageInfo::PasswordReveal {
-                    index: 2,
-                };
+                ask_for_password!(2)
             }
             Some(tile::PERSON_4) => {
-                self.message_info = MessageInfo::PasswordReveal {
-                    index: 3,
-                };
+                ask_for_password!(3)
             }
             None => {}
             _ => {}
@@ -573,6 +600,8 @@ impl State {
 
 pub struct Segment {
     pub text: &'static [u8],
+    pub start: usize,
+    pub end: usize,
     pub x: X,
     pub y: Y,
 }
@@ -580,29 +609,51 @@ pub struct Segment {
 impl Segment {
     const DEFAULT: Self = Self {
         text: b"",
+        start: 0,
+        end: 0,
         x: xy::x(0),
         y: xy::y(0),
     };
 }
 
+macro_rules! segment_literal {
+    (
+        text: $s: literal,
+        x:  $x: expr,
+        y:  $y: expr $(,)?
+    ) => ({
+        Segment {
+            text: $s,
+            start: 0,
+            end: $s.len(),
+            x: $x,
+            y: $y,
+        }
+    })
+}
+
+
 static CONGRATURATION_LINES: [Segment; 2] =
     [
-        Segment {
+        segment_literal!(
             text: b"congraturation",
             x: xy::x(12),
             y: xy::y(4),
-        },
-        Segment {
+        ),
+        segment_literal!(
             text: b"this story is happy end",
             x: xy::x(4),
             y: xy::y(8),
-        },
+        ),
     ];
 
-/// This is only for the HOUSES map.
+/// This group of constants is only for the HOUSES map.
 // TODO make this depend on the map, to be less foot-gunny
 const TEXT_BOX_TOP: Y = xy::y(24);
+const TEXT_BOX_FIRST_COLUMN: X = xy::x(1);
 const TEXT_BOX_FIRST_LINE: Y = xy::y(25);
+const TEXT_BOX_USUABLE_WIDTH: usize = 30;
+
 
 struct SegmentSlice {
     segments: [Segment; 16],
@@ -631,18 +682,54 @@ static WEST_0_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the
 static WEST_1_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button second");
 static WEST_2_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button third");
 static WEST_3_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button fourth");
+static PASSWORD_REVEAL_REFUSAL_MESSAGE: SegmentSlice = fit_in_text_box(b"someone else told already. i won't.");
 static MISSING_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"missing_password_reveal_message");
 
 const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
     let mut segments = [Segment::DEFAULT; 16];
     let mut length = 0;
-    // TODO: split on words and add more segments if needed
+
+    // This curently panics if we have too many segments!
+
+    let mut line_start_index = 0;
+    let mut y = TEXT_BOX_FIRST_LINE;
+    // Iterating like this assumes we are dealing with ASCII, not Unicode!
+    let mut i = 0;
+    while i < s.len() {
+        if s[i] == b' ' {
+            let mut end_of_word = i + 1;
+            while end_of_word < s.len() {
+                if s[end_of_word] == b' ' {
+                    break
+                }
+                end_of_word += 1;
+            }
+            let width = end_of_word - line_start_index;
+            if width >= TEXT_BOX_USUABLE_WIDTH {
+                let end = i.saturating_sub(1);
+                segments[length] = Segment {
+                    text: s,
+                    start: line_start_index,
+                    end,
+                    x: TEXT_BOX_FIRST_COLUMN,
+                    y,
+                };
+                length += 1;
+                y = xy::const_add_h(y, H::ONE);
+                line_start_index = end;
+            }
+        }
+
+        i += 1;
+    }
     segments[length] = Segment {
         text: s,
-        x: xy::x(1),
-        y: TEXT_BOX_FIRST_LINE,
+        start: line_start_index,
+        end: s.len(),
+        x: TEXT_BOX_FIRST_COLUMN,
+        y,
     };
-    length += 1;
+    length += 1;    
 
     SegmentSlice {
         segments,
@@ -712,6 +799,9 @@ impl State {
                     ("east", 3) => EAST_3_PASSWORD_REVEAL_MESSAGE.as_slice(),
                     _ => MISSING_PASSWORD_REVEAL_MESSAGE.as_slice(),
                 }
+            },
+            (Screen::Gameplay, &MessageInfo::PasswordRevealRefused) => {
+                    PASSWORD_REVEAL_REFUSAL_MESSAGE.as_slice()
             },
         };
 
