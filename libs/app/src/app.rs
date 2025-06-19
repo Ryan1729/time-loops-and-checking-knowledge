@@ -64,33 +64,7 @@ impl platform_types::State for State {
 }
 
 fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
-    let sfx_opt = if input.pressed_this_frame(Button::UP) {
-        state.move_player(Dir::Up)
-    } else if input.pressed_this_frame(Button::DOWN) {
-        state.move_player(Dir::Down)
-    } else if input.pressed_this_frame(Button::LEFT) {
-        state.move_player(Dir::Left)
-    } else if input.pressed_this_frame(Button::RIGHT) {
-        state.move_player(Dir::Right)
-    } else {
-        None
-    };
-
-    if input.pressed_this_frame(Button::A) {
-        if input.gamepad.contains(Button::UP) {
-            state.interact(Dir::Up)
-        } else if input.gamepad.contains(Button::DOWN) {
-            state.interact(Dir::Down)
-        } else if input.gamepad.contains(Button::LEFT) {
-            state.interact(Dir::Left)
-        } else if input.gamepad.contains(Button::RIGHT) {
-            state.interact(Dir::Right)
-        }
-    }
-
-    if let Some(sfx) = sfx_opt {
-        speaker.request_sfx(sfx);
-    }
+    state.frame(input, speaker);
 }
 
 #[inline]
@@ -110,6 +84,7 @@ fn render(commands: &mut Commands, state: &game::State) {
         tiles,
         text_boxes,
         message_segments,
+        hud,
     } = state.render_info();
 
     for tile in tiles {
@@ -134,6 +109,15 @@ fn render(commands: &mut Commands, state: &game::State) {
             &segment.text[segment.start..segment.end],
             to_x(segment.x),
             to_y(segment.y),
+            6
+        );
+    }
+
+    for print in hud.prints {
+        commands.print(
+            &print.text,
+            print.x,
+            print.y,
             6
         );
     }

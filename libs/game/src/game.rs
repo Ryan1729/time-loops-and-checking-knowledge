@@ -1,5 +1,5 @@
 use models::{tile, TileKind};
-use platform_types::{SFX, command, unscaled};
+use platform_types::{Button, Input, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
 use std::collections::HashMap;
@@ -291,8 +291,8 @@ impl <const N: ButtonCount> PasswordLock<N> {
 // * Make a fixed password reveal the key (done)
 // * Make the password be randomized (done)
 // * Make walking into the portal reset time (done)
-// * Make the people each reveal part of the password, but get angry if you asked someone else already
-// * Make in-game time eventually reset over some number of frames
+// * Make the people each reveal part of the password, but get angry if you asked someone else already (done)
+// * Make in-game time eventually reset over some number of frames (done)
 //     * Show current frame count first
 // * Have a character move around, based on the frame time
 // * Have the moving character push something, (a large pot I guess?) in front of a door so a room is not reachable at
@@ -368,7 +368,11 @@ pub enum MessageInfo {
     PasswordRevealRefused,
 }
 
+/// 65536 distinct frames ought to be enough for anybody!
+type FrameCount = u16;
+
 pub struct State {
+    pub frame_count: FrameCount,
     pub rng: Xs,
     pub player: Entity,
     pub map: Map,
@@ -377,6 +381,7 @@ pub struct State {
     pub password_lock: PasswordLock,
     pub message_info: MessageInfo,
     pub previous_password_reveal_index: Option<usize>,
+    pub hud_prints: [Print; 1],
 }
 
 impl State {
@@ -415,6 +420,7 @@ impl State {
         };
 
         State {
+            frame_count: 0,
             rng,
             player,
             map,
@@ -426,7 +432,50 @@ impl State {
             ),
             message_info: MessageInfo::default(),
             previous_password_reveal_index: <_>::default(),
+            hud_prints: <_>::default(),
         }
+    }
+
+    pub fn frame(&mut self, input: Input, speaker: &mut Speaker) {
+        let sfx_opt = if input.pressed_this_frame(Button::UP) {
+            self.move_player(Dir::Up)
+        } else if input.pressed_this_frame(Button::DOWN) {
+            self.move_player(Dir::Down)
+        } else if input.pressed_this_frame(Button::LEFT) {
+            self.move_player(Dir::Left)
+        } else if input.pressed_this_frame(Button::RIGHT) {
+            self.move_player(Dir::Right)
+        } else {
+            None
+        };
+    
+        if input.pressed_this_frame(Button::A) {
+            if input.gamepad.contains(Button::UP) {
+                self.interact(Dir::Up)
+            } else if input.gamepad.contains(Button::DOWN) {
+                self.interact(Dir::Down)
+            } else if input.gamepad.contains(Button::LEFT) {
+                self.interact(Dir::Left)
+            } else if input.gamepad.contains(Button::RIGHT) {
+                self.interact(Dir::Right)
+            }
+        }
+    
+        if let Some(sfx) = sfx_opt {
+            speaker.request_sfx(sfx);
+        }
+
+        match self.frame_count.checked_add(1) {
+            Some(count) => {
+                self.frame_count = count;
+            }
+            None => {
+                self.reset_time();
+            }
+        }
+
+        use std::io::Write;
+        let _ = write!(&mut self.hud_prints[0].text[..], "{}", self.frame_count);
     }
 
     fn reset_time(&mut self) {
@@ -459,8 +508,7 @@ impl State {
         get_effective_tile(self.map, &self.entities, xy_to_i(self.map, x, y))
     }
 
-    #[must_use]
-    pub fn interact(&mut self, dir: Dir) {
+    fn interact(&mut self, dir: Dir) {
         let (target_x, target_y) = xy_in_dir(dir, self.player.x, self.player.y);
 
         macro_rules! ask_for_password {
@@ -497,7 +545,7 @@ impl State {
     }
 
     #[must_use]
-    pub fn move_player(&mut self, dir: Dir) -> Option<SFX> {
+    fn move_player(&mut self, dir: Dir) -> Option<SFX> {
         let mut output = None;
 
         self.message_info = MessageInfo::NoMessage;
@@ -737,10 +785,22 @@ const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
     }
 }
 
-pub struct RenderInfo<'tiles> {
-    pub tiles: CurrentTiles<'tiles>,
+pub struct RenderInfo<'state> {
+    pub tiles: CurrentTiles<'state>,
     pub text_boxes: TextBoxes,
     pub message_segments: MessageSegments,
+    pub hud: Hud<'state>,
+}
+
+#[derive(Default)]
+pub struct Print {
+    pub text: [u8; 16],
+    pub x: unscaled::X,
+    pub y: unscaled::Y,
+}
+
+pub struct Hud<'prints> {
+    pub prints: &'prints [Print],
 }
 
 pub type TextBoxes = core::option::IntoIter<Rect>;
@@ -841,6 +901,9 @@ impl State {
             },
             text_boxes: text_box.into_iter(),
             message_segments: message_segments.into_iter(),
+            hud: Hud {
+                prints: &self.hud_prints,
+            }
         }
     }
 }
