@@ -237,7 +237,12 @@ pub enum Screen {
     Congraturation,
 }
 
-type Entities = HashMap<usize, Entity>;
+#[derive(Default)]
+pub struct Entities {
+    pub dynamic: HashMap<usize, Entity>,
+    // Houses map specific
+    pub turtle: Entity,
+}
 
 type ButtonIndex = usize;
 type ButtonCount = usize;
@@ -298,8 +303,15 @@ impl <const N: ButtonCount> PasswordLock<N> {
 // * Have the moving character push something, (a large pot I guess?) in front of a door so a room is not reachable at
 //   certain in-game times
 
-fn get_effective_tile(map: Map, entities: &Entities, index: usize) -> Option<TileKind> {
-    entities.get(&index)
+fn get_effective_tile(map: Map, entities: &Entities, x: X, y: Y) -> Option<TileKind> {
+    if x == entities.turtle.x
+    && y == entities.turtle.y {
+        return Some(entities.turtle.kind);
+    }
+
+    let index = xy_to_i(map, x, y);
+
+    entities.dynamic.get(&index)
         .map(|e| e.kind)
         .or_else(|| {
             map.tiles.get(index).copied()
@@ -326,36 +338,57 @@ fn xy_in_dir(dir: Dir, mut x: X, mut y: Y) -> (X, Y) {
     (x, y)
 }
 
-fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
-    let (new_x, new_y) = xy_in_dir(dir, entity.x, entity.y);
+mod movement {
+    use super::*;
 
-    if let Some(tile_kind) = get_effective_tile(map, entities, xy_to_i(map, new_x, new_y)) {
-        match tile_kind {
-            tile::FLOOR
-            | tile::GROUND
-            | tile::GRASS_GROUND
-            | tile::DOOR_0
-            | tile::DOOR_1
-            | tile::DOOR_2
-            | tile::DOOR_3
-            | tile::DOOR_4
-            | tile::STAIRS_DOWN
-            | tile::KEY
-            | tile::BUTTON_LIT
-            | tile::BUTTON_DARK
-            | tile::BUTTON_PRESSED
-            | tile::PORTAL => {} // Allow move to happen
-            _ => return, // Don't allow move to happen
-        }
-    } else {
-        // If we're glitched out of bounds, let movement through so they can maybe get unstuck.
+    // Maybe have this contain a list of moves from a given x,y to a different x,y to allow things like swaps or 
+    // pushing a thing around
+    pub struct Planned {
+        new_x: X,
+        new_y: Y,
     }
 
-    let max_map_x = xy::x((map.width.saturating_sub(1)) as _);
-    let max_map_y = xy::y((map.height.saturating_sub(1)) as _);
+    pub fn plan(entity: &Entity, map: Map, entities: &Entities, dir: Dir) -> Option<Planned> {
+        let (new_x, new_y) = xy_in_dir(dir, entity.x, entity.y);
 
-    entity.x = new_x.clamp(X::ZERO, max_map_x);
-    entity.y = new_y.clamp(Y::ZERO, max_map_y);
+        if let Some(tile_kind) = get_effective_tile(map, entities, new_x, new_y) {
+            match tile_kind {
+                tile::FLOOR
+                | tile::GROUND
+                | tile::GRASS_GROUND
+                | tile::DOOR_0
+                | tile::DOOR_1
+                | tile::DOOR_2
+                | tile::DOOR_3
+                | tile::DOOR_4
+                | tile::STAIRS_DOWN
+                | tile::KEY
+                | tile::BUTTON_LIT
+                | tile::BUTTON_DARK
+                | tile::BUTTON_PRESSED
+                | tile::PORTAL => {} // Allow move to happen
+                _ => return None, // Don't allow move to happen
+            }
+        } else {
+            // If we're glitched out of bounds, let movement through so they can maybe get unstuck.
+        }
+
+        Some(Planned { new_x, new_y })
+    }
+
+    pub fn perform(entity: &mut Entity, map: Map, Planned { new_x, new_y }: Planned ) {
+        let max_map_x = xy::x((map.width.saturating_sub(1)) as _);
+        let max_map_y = xy::y((map.height.saturating_sub(1)) as _);
+    
+        entity.x = new_x.clamp(X::ZERO, max_map_x);
+        entity.y = new_y.clamp(Y::ZERO, max_map_y);
+    }
+}
+
+fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
+    if let Some(planned) = movement::plan(entity, map, entities, dir) {
+        movement::perform(entity, map, planned);
+    }
 }
 
 #[derive(Default)]
@@ -370,6 +403,16 @@ pub enum MessageInfo {
 
 /// 65536 distinct frames ought to be enough for anybody!
 type FrameCount = u16;
+
+// TODO?
+//pub struct Houses {
+    //turtle: Entity,
+//}
+//
+//enum MapSpecific {
+    //StructuredArt,
+    //Houses(Houses)
+//}
 
 pub struct State {
     pub frame_count: FrameCount,
@@ -394,6 +437,8 @@ impl State {
             y: xy::y(5),
         };
 
+        let mut entities = Entities::default();
+
         let (map, buttons) = if cfg!(feature = "structured_art_mode") {
             (
                 &maps::STRUCTURED_ART,
@@ -408,6 +453,10 @@ impl State {
                 ]
             )
         } else {
+            entities.turtle.x = xy::x(16);
+            entities.turtle.y = xy::y(4);
+            entities.turtle.kind = tile::TURTLE;
+
             (
                 &maps::HOUSES,
                 [
@@ -425,7 +474,7 @@ impl State {
             player,
             map,
             screen: Screen::default(),
-            entities: Entities::default(),
+            entities,
             password_lock: PasswordLock::new(
                 buttons,
                 &mut rng
@@ -437,6 +486,22 @@ impl State {
     }
 
     pub fn frame(&mut self, input: Input, speaker: &mut Speaker) {
+        if self.frame_count & 0b111 == 0 {
+            if let Some(planned) = movement::plan(
+                &self.entities.turtle,
+                self.map,
+                &self.entities,
+                match self.frame_count >> 6 & 0b11 {
+                    0b01 => Dir::Down,
+                    0b10 => Dir::Right,
+                    0b11 => Dir::Up,
+                    _ => Dir::Left,
+                }
+            ) {
+                movement::perform(&mut self.entities.turtle, self.map, planned);
+            };
+        }
+
         let sfx_opt = if input.pressed_this_frame(Button::UP) {
             self.move_player(Dir::Up)
         } else if input.pressed_this_frame(Button::DOWN) {
@@ -494,18 +559,18 @@ impl State {
     fn add_entity(&mut self, entity: Entity) {
         let index = xy_to_i(self.map, entity.x, entity.y);
 
-        self.entities.insert(index, entity);
+        self.entities.dynamic.insert(index, entity);
     }
 
     fn remove_entity(&mut self, x: X, y: Y) -> Option<Entity> {
         let index = xy_to_i(self.map, x, y);
 
-        self.entities.remove(&index)
+        self.entities.dynamic.remove(&index)
     }
 
     /// Returns the tile after any entities have replaced it, as opposed to the initial set of tiles.
     fn get_effective_tile(&mut self, x: X, y: Y) -> Option<TileKind> {
-        get_effective_tile(self.map, &self.entities, xy_to_i(self.map, x, y))
+        get_effective_tile(self.map, &self.entities, x, y)
     }
 
     fn interact(&mut self, dir: Dir) {
@@ -946,9 +1011,11 @@ impl Iterator for CameraIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.done { return None }
 
-        let tiles_index =
-            xy_to_i(self.map, self.tile.x + self.offset_x, self.tile.y + self.offset_y);
-        if let Some(tile_kind) = get_effective_tile(self.map, self.entities, tiles_index) {
+        let x = self.tile.x + self.offset_x;
+        let y = self.tile.y + self.offset_y;
+
+        let tiles_index = xy_to_i(self.map, x, y);
+        if let Some(tile_kind) = get_effective_tile(self.map, self.entities, x, y) {
             self.tile.kind = tile_kind;
 
             let output = self.tile.clone();
