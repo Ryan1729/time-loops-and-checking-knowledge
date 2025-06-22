@@ -239,6 +239,7 @@ pub enum Screen {
 
 #[derive(Default)]
 pub struct Entities {
+    pub player: Entity,
     pub dynamic: HashMap<usize, Entity>,
     // Houses map specific
     pub turtle: Entity,
@@ -303,10 +304,27 @@ impl <const N: ButtonCount> PasswordLock<N> {
 // * Have the moving character push something, (a large pot I guess?) in front of a door so a room is not reachable at
 //   certain in-game times
 
+type TileFlags = u8;
+
+const NO_MOBS: TileFlags = 0x01;
+
 fn get_effective_tile(map: Map, entities: &Entities, x: X, y: Y) -> Option<TileKind> {
+    get_effective_tile_custom(map, entities, x, y, 0)
+}
+
+fn get_effective_tile_custom(map: Map, entities: &Entities, x: X, y: Y, flags: TileFlags) -> Option<TileKind> {
+    if x == entities.player.x
+    && y == entities.player.y {
+        if flags & NO_MOBS == 0 {
+            return Some(entities.player.kind);
+        }
+    }
+
     if x == entities.turtle.x
     && y == entities.turtle.y {
-        return Some(entities.turtle.kind);
+        if flags & NO_MOBS == 0 {
+            return Some(entities.turtle.kind);
+        }
     }
 
     let index = xy_to_i(map, x, y);
@@ -404,20 +422,9 @@ pub enum MessageInfo {
 /// 65536 distinct frames ought to be enough for anybody!
 type FrameCount = u16;
 
-// TODO?
-//pub struct Houses {
-    //turtle: Entity,
-//}
-//
-//enum MapSpecific {
-    //StructuredArt,
-    //Houses(Houses)
-//}
-
 pub struct State {
     pub frame_count: FrameCount,
     pub rng: Xs,
-    pub player: Entity,
     pub map: Map,
     pub screen: Screen,
     pub entities: Entities,
@@ -431,13 +438,13 @@ impl State {
     pub fn new(seed: Seed) -> State {
         let mut rng = xs::from_seed(seed);
 
-        let player = Entity {
+        let mut entities = Entities::default();
+
+        entities.player = Entity {
             kind: 9,
             x: xy::x(2),
             y: xy::y(5),
         };
-
-        let mut entities = Entities::default();
 
         let (map, buttons) = if cfg!(feature = "structured_art_mode") {
             (
@@ -471,7 +478,6 @@ impl State {
         State {
             frame_count: 0,
             rng,
-            player,
             map,
             screen: Screen::default(),
             entities,
@@ -486,6 +492,8 @@ impl State {
     }
 
     pub fn frame(&mut self, input: Input, speaker: &mut Speaker) {
+        let mut sfx_opt = None;
+
         if self.frame_count & 0b111 == 0 {
             if let Some(planned) = movement::plan(
                 &self.entities.turtle,
@@ -499,10 +507,19 @@ impl State {
                 }
             ) {
                 movement::perform(&mut self.entities.turtle, self.map, planned);
+
+                match get_effective_tile_custom(self.map, &self.entities, self.entities.turtle.x, self.entities.turtle.y, NO_MOBS) {
+                    Some(tile::BUTTON_LIT) => {
+                        if let Some(sfx) = self.entity_on_button(self.entities.turtle.x, self.entities.turtle.y) {
+                            speaker.request_sfx(sfx);
+                        }
+                    }
+                    _ => {}
+                }
             };
         }
 
-        let sfx_opt = if input.pressed_this_frame(Button::UP) {
+        sfx_opt = if input.pressed_this_frame(Button::UP) {
             self.move_player(Dir::Up)
         } else if input.pressed_this_frame(Button::DOWN) {
             self.move_player(Dir::Down)
@@ -574,7 +591,7 @@ impl State {
     }
 
     fn interact(&mut self, dir: Dir) {
-        let (target_x, target_y) = xy_in_dir(dir, self.player.x, self.player.y);
+        let (target_x, target_y) = xy_in_dir(dir, self.entities.player.x, self.entities.player.y);
 
         macro_rules! ask_for_password {
             ($index: expr) => {
@@ -610,6 +627,62 @@ impl State {
     }
 
     #[must_use]
+    fn entity_on_button(&mut self, x: X, y: Y) -> Option<SFX> {
+        let (key_x, key_y) = (xy::x(6), xy::y(14));
+
+        let output = Some(SFX::ButtonPress);
+
+        let button_count = self.password_lock.open.len() as ButtonCount;
+        for i in 0..button_count {
+            if self.password_lock.open[i] {
+                continue
+            }
+            
+            if self.password_lock.xs[i] == x
+            && self.password_lock.ys[i] == y
+            {
+                if self.password_lock.press_count == i {
+                    self.password_lock.open[i] = true;
+                }
+                self.password_lock.press_count += 1;
+
+                self.add_entity(Entity {
+                    kind: tile::BUTTON_DARK,
+                    x,
+                    y,
+                });
+
+                break
+            }
+        }
+
+        // If lock is open
+        if self.password_lock.open.iter().all(|&b| b) {
+            self.add_entity(Entity {
+                kind: tile::KEY,
+                x: key_x,
+                y: key_y,
+            });
+        } else {
+            // If all the buttons were pressed without unlocking
+            if self.password_lock.press_count >= button_count {
+                // Reset all the buttons because a mistake was made
+                // entering it.
+                self.password_lock.reset();
+
+                for i in 0..button_count {
+                    self.remove_entity(
+                        self.password_lock.xs[i],
+                        self.password_lock.ys[i],
+                    );
+                }
+            }
+        }
+
+        output
+    }
+
+    #[must_use]
     fn move_player(&mut self, dir: Dir) -> Option<SFX> {
         let mut output = None;
 
@@ -620,14 +693,15 @@ impl State {
             Screen::Congraturation => return output,
         }
 
-        move_entity(&mut self.player, self.map, &self.entities, dir);
+        if let Some(planned) = movement::plan(&self.entities.player, self.map, &self.entities, dir) {
+            movement::perform(&mut self.entities.player, self.map, planned);
+        }
 
         match self.map {
              m if core::ptr::eq(m, &maps::HOUSES)=> {
                 let (locked_door_x, locked_door_y) = (xy::x(2), xy::y(3));
-                let (key_x, key_y) = (xy::x(6), xy::y(14));
 
-                match self.get_effective_tile(self.player.x, self.player.y) {
+                match get_effective_tile_custom(self.map, &self.entities, self.entities.player.x, self.entities.player.y, NO_MOBS) {
                     Some(tile::PORTAL) => {
                         output = Some(SFX::CardPlace);
 
@@ -647,59 +721,12 @@ impl State {
 
                         self.add_entity(Entity {
                             kind: tile::FLOOR,
-                            x: self.player.x,
-                            y: self.player.y,
+                            x: self.entities.player.x,
+                            y: self.entities.player.y,
                         });
                     }
                     Some(tile::BUTTON_LIT) => {
-                        output = Some(SFX::ButtonPress);
-
-                        let button_count = self.password_lock.open.len() as ButtonCount;
-                        for i in 0..button_count {
-                            if self.password_lock.open[i] {
-                                continue
-                            }
-
-                            if self.password_lock.xs[i] == self.player.x
-                            && self.password_lock.ys[i] == self.player.y
-                            {
-                                if self.password_lock.press_count == i {
-                                    self.password_lock.open[i] = true;
-                                }
-                                self.password_lock.press_count += 1;
-
-                                self.add_entity(Entity {
-                                    kind: tile::BUTTON_DARK,
-                                    x: self.player.x,
-                                    y: self.player.y,
-                                });
-
-                                break
-                            }
-                        }
-
-                        // If lock is open
-                        if self.password_lock.open.iter().all(|&b| b) {
-                            self.add_entity(Entity {
-                                kind: tile::KEY,
-                                x: key_x,
-                                y: key_y,
-                            });
-                        } else {
-                            // If all the buttons were pressed without unlocking
-                            if self.password_lock.press_count >= button_count {
-                                // Reset all the buttons because a mistake was made
-                                // entering it.
-                                self.password_lock.reset();
-
-                                for i in 0..button_count {
-                                    self.remove_entity(
-                                        self.password_lock.xs[i],
-                                        self.password_lock.ys[i],
-                                    );
-                                }
-                            }
-                        }
+                        output = self.entity_on_button(self.entities.player.x, self.entities.player.y);
                     }
                     _ => {}
                 }
@@ -879,8 +906,8 @@ impl State {
         let output_width = xy::w(32).clamp(W::ZERO, map_w);
         let output_height = (TEXT_BOX_TOP - xy::y(0)).clamp(H::ZERO, map_h);
 
-        let mut offset_x: W = self.player.x - (X::ZERO + output_width.halve());
-        let mut offset_y: H = self.player.y - (Y::ZERO + output_height.halve());
+        let mut offset_x: W = self.entities.player.x - (X::ZERO + output_width.halve());
+        let mut offset_y: H = self.entities.player.y - (Y::ZERO + output_height.halve());
 
         // Want to clamp the offset such that we never see the edge of the world.
         // So when output_width == self.map.width, we want the offset to always
@@ -954,9 +981,9 @@ impl State {
         };
 
         let player = Some(Tile {
-            kind: self.player.kind,
-            x: self.player.x - offset_x,
-            y: self.player.y - offset_y,
+            kind: self.entities.player.kind,
+            x: self.entities.player.x - offset_x,
+            y: self.entities.player.y - offset_y,
         });
 
         RenderInfo {
@@ -1014,7 +1041,6 @@ impl Iterator for CameraIter<'_> {
         let x = self.tile.x + self.offset_x;
         let y = self.tile.y + self.offset_y;
 
-        let tiles_index = xy_to_i(self.map, x, y);
         if let Some(tile_kind) = get_effective_tile(self.map, self.entities, x, y) {
             self.tile.kind = tile_kind;
 
