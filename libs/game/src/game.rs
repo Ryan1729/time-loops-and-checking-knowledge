@@ -243,6 +243,8 @@ pub struct Entities {
     pub dynamic: HashMap<usize, Entity>,
     // Houses map specific
     pub turtle: Entity,
+    pub crab: Entity,
+    pub large_pot: Entity,
 }
 
 type ButtonIndex = usize;
@@ -275,7 +277,6 @@ impl <const N: ButtonCount> PasswordLock<N> {
             output.ys[i] = y;
             output.names[i] = name;
         }
-        dbg!(&output);
         output
     }
 
@@ -300,9 +301,44 @@ impl <const N: ButtonCount> PasswordLock<N> {
 // * Make the people each reveal part of the password, but get angry if you asked someone else already (done)
 // * Make in-game time eventually reset over some number of frames (done)
 //     * Show current frame count first
-// * Have a character move around, based on the frame time
+// * Have a character move around, based on the frame time (done)
 // * Have the moving character push something, (a large pot I guess?) in front of a door so a room is not reachable at
 //   certain in-game times
+// * And an NPC that has multiple dialogs that tells you which of a whole bunch of graves in a graveyard you can push
+//   over to reveal stairs or a treasure
+// * Make a new map with that graveyard in it, and a way to get there
+//    * Walk to edge of the map, but make the edges that don't have anything say a message instead?
+// * Allow moving that gravestone and put something under it
+//    * Allow moving all the gravestones?
+
+// Future ideas:
+// * Ways to get rewards
+//     * A chained trading/fetch quest
+//        * This isn't that much of a knowledge check though?
+//            * Final reward can be useful knowledge, akin to a password
+//                * figure out the reward first
+//            * Could be passing information back and forth between people
+//     * A character that yammers on and on and eventually tells you about where something hidden is
+//        * Could punt for now and just have you tell you after like two text boxes.
+//        * One idea for this: An elderly person tells you that a boulder used to be somewhere else, so then that tips
+//          you off that you need to move it. Maybe something is buried beneath it?
+//     * A timed event that you can figure out by observing what happens
+//         * Maybe some information, like a door combination, gets destroyed unless you intervene. Say a pie with a 
+//           bit of paper stuck to it gets given to someone else. So you need to get in line at the right time
+// * Types of rewards
+//    * Literal Password
+//        * Like numbers or whatever
+//        * Cpudl be an switch puzzle but where an alternate state that woudln't otherwise be a solution opens another door
+//    * A hidden mechanic: Something works in a non-obvious way
+//        * A mob moves in reaction to the player doing something specific
+//            * staying exactly n spaces away
+//                * following right behind as a subtype
+//        * You can pick up a thing that is really close to a different thing and use it on something in a non-obvious way
+//            * Pulling a kick-me sign out of the garbage maybe? That then causes a chain reaction when you place it?
+//    * Figartive password
+//        * knock on this specific unmarked tile, then this specific other one
+//        * knowledge that an NPC will react a specific way to you doing something in their presence
+
 
 type TileFlags = u8;
 
@@ -313,17 +349,19 @@ fn get_effective_tile(map: Map, entities: &Entities, x: X, y: Y) -> Option<TileK
 }
 
 fn get_effective_tile_custom(map: Map, entities: &Entities, x: X, y: Y, flags: TileFlags) -> Option<TileKind> {
-    if x == entities.player.x
-    && y == entities.player.y {
-        if flags & NO_MOBS == 0 {
-            return Some(entities.player.kind);
-        }
-    }
+    let mobs = [
+        &entities.player,
+        &entities.turtle,
+        &entities.crab,
+        &entities.large_pot,
+    ];
 
-    if x == entities.turtle.x
-    && y == entities.turtle.y {
-        if flags & NO_MOBS == 0 {
-            return Some(entities.turtle.kind);
+    for mob in mobs {
+        if x == mob.x
+        && y == mob.y {
+            if flags & NO_MOBS == 0 {
+                return Some(mob.kind);
+            }
         }
     }
 
@@ -359,7 +397,7 @@ fn xy_in_dir(dir: Dir, mut x: X, mut y: Y) -> (X, Y) {
 mod movement {
     use super::*;
 
-    // Maybe have this contain a list of moves from a given x,y to a different x,y to allow things like swaps or 
+    // TODO: have this contain a list of moves from a given x,y to a different x,y to allow things like swaps or 
     // pushing a thing around
     pub struct Planned {
         new_x: X,
@@ -464,6 +502,14 @@ impl State {
             entities.turtle.y = xy::y(4);
             entities.turtle.kind = tile::TURTLE;
 
+            entities.crab.x = xy::x(60);
+            entities.crab.y = xy::y(4);
+            entities.crab.kind = tile::CRAB;
+            
+            entities.large_pot.x = xy::x(59);
+            entities.large_pot.y = xy::y(4);
+            entities.large_pot.kind = tile::LARGE_POT;
+
             (
                 &maps::HOUSES,
                 [
@@ -494,7 +540,8 @@ impl State {
     pub fn frame(&mut self, input: Input, speaker: &mut Speaker) {
         let mut sfx_opt = None;
 
-        if self.frame_count & 0b111 == 0 {
+        // Turtle movement
+        if self.frame_count & 0b1111 == 0 {
             if let Some(planned) = movement::plan(
                 &self.entities.turtle,
                 self.map,
@@ -511,6 +558,30 @@ impl State {
                 match get_effective_tile_custom(self.map, &self.entities, self.entities.turtle.x, self.entities.turtle.y, NO_MOBS) {
                     Some(tile::BUTTON_LIT) => {
                         if let Some(sfx) = self.entity_on_button(self.entities.turtle.x, self.entities.turtle.y) {
+                            speaker.request_sfx(sfx);
+                        }
+                    }
+                    _ => {}
+                }
+            };
+        }
+
+        // Crab movement
+        if self.frame_count & 0b111 == 0 {
+            if let Some(planned) = movement::plan(
+                &self.entities.crab,
+                self.map,
+                &self.entities,
+                match self.frame_count >> 6 & 0b11 {
+                    0b01 => Dir::Right,
+                    _ => Dir::Left,
+                }
+            ) {
+                movement::perform(&mut self.entities.crab, self.map, planned);
+
+                match get_effective_tile_custom(self.map, &self.entities, self.entities.crab.x, self.entities.crab.y, NO_MOBS) {
+                    Some(tile::BUTTON_LIT) => {
+                        if let Some(sfx) = self.entity_on_button(self.entities.crab.x, self.entities.crab.y) {
                             speaker.request_sfx(sfx);
                         }
                     }

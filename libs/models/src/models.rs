@@ -17,7 +17,10 @@ pub mod tile {
     pub const PERSON_4: TileKind = 8;
     pub const PERSON_5: TileKind = 9;
     pub const FLOOR: TileKind = 15;
+    pub const CRAB: TileKind = 21;
     pub const TURTLE: TileKind = 24;
+    pub const LARGE_POT: TileKind = 36;
+    //pub const SMALL_POT: TileKind = 37;
     pub const STAIRS_DOWN: TileKind = 46;
     pub const GROUND: TileKind = 60;
     pub const GRASS_GROUND: TileKind = 61;
