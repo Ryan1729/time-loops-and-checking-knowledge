@@ -247,6 +247,48 @@ pub struct Entities {
     pub large_pot: Entity,
 }
 
+macro_rules! mobs {
+    (& $self: ident) => ({
+        [
+            & $self.player,
+            & $self.turtle,
+            & $self.crab,
+            & $self.large_pot,
+        ]
+    });
+    (& mut $self: ident) => ({
+        [
+            &mut $self.player,
+            &mut $self.turtle,
+            &mut $self.crab,
+            &mut $self.large_pot,
+        ]
+    });
+}
+
+impl Entities {
+    fn mobs(&self) -> [&Entity; 4] {
+        mobs!(&self)
+    }
+
+    fn mobs_mut(&mut self) -> [&mut Entity; 4] {
+        mobs!(&mut self)
+    }
+
+    fn get_mut(&mut self, map: Map, x: X, y: Y) -> Option<&mut Entity> {
+        for mob in mobs!(&mut self) {
+            if x == mob.x
+            && y == mob.y {
+                return Some(mob);
+            }
+        }
+
+        let index = xy_to_i(map, x, y);
+
+        self.dynamic.get_mut(&index)
+    }
+}
+
 type ButtonIndex = usize;
 type ButtonCount = usize;
 
@@ -323,7 +365,7 @@ impl <const N: ButtonCount> PasswordLock<N> {
 //        * One idea for this: An elderly person tells you that a boulder used to be somewhere else, so then that tips
 //          you off that you need to move it. Maybe something is buried beneath it?
 //     * A timed event that you can figure out by observing what happens
-//         * Maybe some information, like a door combination, gets destroyed unless you intervene. Say a pie with a 
+//         * Maybe some information, like a door combination, gets destroyed unless you intervene. Say a pie with a
 //           bit of paper stuck to it gets given to someone else. So you need to get in line at the right time
 // * Types of rewards
 //    * Literal Password
@@ -349,14 +391,7 @@ fn get_effective_tile(map: Map, entities: &Entities, x: X, y: Y) -> Option<TileK
 }
 
 fn get_effective_tile_custom(map: Map, entities: &Entities, x: X, y: Y, flags: TileFlags) -> Option<TileKind> {
-    let mobs = [
-        &entities.player,
-        &entities.turtle,
-        &entities.crab,
-        &entities.large_pot,
-    ];
-
-    for mob in mobs {
+    for mob in entities.mobs() {
         if x == mob.x
         && y == mob.y {
             if flags & NO_MOBS == 0 {
@@ -397,15 +432,54 @@ fn xy_in_dir(dir: Dir, mut x: X, mut y: Y) -> (X, Y) {
 mod movement {
     use super::*;
 
-    // TODO: have this contain a list of moves from a given x,y to a different x,y to allow things like swaps or 
-    // pushing a thing around
-    pub struct Planned {
+    #[derive(Default)]
+    pub struct Plan {
+        old_x: X,
+        old_y: Y,
         new_x: X,
         new_y: Y,
     }
 
-    pub fn plan(entity: &Entity, map: Map, entities: &Entities, dir: Dir) -> Option<Planned> {
-        let (new_x, new_y) = xy_in_dir(dir, entity.x, entity.y);
+    type PlannedLength = u8;
+
+    #[derive(Default)]
+    pub struct Planned {
+        plans: [Plan; 15],
+        length: PlannedLength,
+    }
+
+    impl Planned {
+        fn push(&mut self, plan: Plan) {
+            // TODO? report back if we ran out of room?
+            if let Some(p) = self.plans.get_mut(self.length as usize) {
+                *p = plan;
+                self.length += 1;
+            }
+        }
+
+        pub fn len(&self) -> PlannedLength {
+            self.length
+        }
+    }
+
+    pub fn plan(entity_x: X, entity_y: Y, map: Map, entities: &Entities, dir: Dir) -> Planned {
+        let mut planned = Planned::default();
+
+        plan_helper(&mut planned, entity_x, entity_y, map, entities, dir);
+
+        planned
+    }
+
+    fn plan_helper(planned: &mut Planned, entity_x: X, entity_y: Y, map: Map, entities: &Entities, dir: Dir) {
+        let (new_x, new_y) = xy_in_dir(dir, entity_x, entity_y);
+
+        if new_x == entity_x && new_y == entity_y {
+            // Don't ever recurse forever.
+            *planned = Planned::default();
+            return
+        }
+
+        let initial_length = planned.length;
 
         if let Some(tile_kind) = get_effective_tile(map, entities, new_x, new_y) {
             match tile_kind {
@@ -423,28 +497,48 @@ mod movement {
                 | tile::BUTTON_DARK
                 | tile::BUTTON_PRESSED
                 | tile::PORTAL => {} // Allow move to happen
-                _ => return None, // Don't allow move to happen
+                tile::LARGE_POT => {
+                    // Attempt to push it
+                    plan_helper(planned, new_x, new_y, map, entities, dir);
+
+                    if initial_length == planned.length {
+                        // If something can't move, cancel all the other moves
+                        *planned = Planned::default();
+                        return
+                    }
+                }
+                _ => return, // Don't allow move to happen
             }
         } else {
             // If we're glitched out of bounds, let movement through so they can maybe get unstuck.
         }
 
-        Some(Planned { new_x, new_y })
+        planned.push(Plan {
+            old_x: entity_x,
+            old_y: entity_y,
+            new_x,
+            new_y,
+        })
     }
 
-    pub fn perform(entity: &mut Entity, map: Map, Planned { new_x, new_y }: Planned ) {
+    pub fn perform(entities: &mut Entities, map: Map, Planned { plans, .. }: Planned) {
         let max_map_x = xy::x((map.width.saturating_sub(1)) as _);
         let max_map_y = xy::y((map.height.saturating_sub(1)) as _);
-    
-        entity.x = new_x.clamp(X::ZERO, max_map_x);
-        entity.y = new_y.clamp(Y::ZERO, max_map_y);
+
+        for Plan { old_x, old_y, new_x, new_y, } in plans {
+            if let Some(entity) = entities.get_mut(map, old_x, old_y) {
+                entity.x = new_x.clamp(X::ZERO, max_map_x);
+                entity.y = new_y.clamp(Y::ZERO, max_map_y);
+            } else {
+                // TODO? Send a signal back here that something went wrong?
+            }
+        }
     }
 }
 
-fn move_entity(entity: &mut Entity, map: Map, entities: &Entities, dir: Dir) {
-    if let Some(planned) = movement::plan(entity, map, entities, dir) {
-        movement::perform(entity, map, planned);
-    }
+// TODO add a way to pull things, like pots. Does having them try to move you just work?
+fn move_entity(entity_x: X, entity_y: Y, entities: &mut Entities, map: Map, dir: Dir) {
+    movement::perform(entities, map, movement::plan(entity_x, entity_y, map, entities, dir));
 }
 
 #[derive(Default)]
@@ -505,7 +599,7 @@ impl State {
             entities.crab.x = xy::x(60);
             entities.crab.y = xy::y(4);
             entities.crab.kind = tile::CRAB;
-            
+
             entities.large_pot.x = xy::x(59);
             entities.large_pot.y = xy::y(4);
             entities.large_pot.kind = tile::LARGE_POT;
@@ -542,8 +636,9 @@ impl State {
 
         // Turtle movement
         if self.frame_count & 0b1111 == 0 {
-            if let Some(planned) = movement::plan(
-                &self.entities.turtle,
+            let planned = movement::plan(
+                self.entities.turtle.x,
+                self.entities.turtle.y,
                 self.map,
                 &self.entities,
                 match self.frame_count >> 6 & 0b11 {
@@ -552,8 +647,10 @@ impl State {
                     0b11 => Dir::Up,
                     _ => Dir::Left,
                 }
-            ) {
-                movement::perform(&mut self.entities.turtle, self.map, planned);
+            );
+
+            if planned.len() > 0 {
+                movement::perform(&mut self.entities, self.map, planned);
 
                 match get_effective_tile_custom(self.map, &self.entities, self.entities.turtle.x, self.entities.turtle.y, NO_MOBS) {
                     Some(tile::BUTTON_LIT) => {
@@ -568,16 +665,18 @@ impl State {
 
         // Crab movement
         if self.frame_count & 0b111 == 0 {
-            if let Some(planned) = movement::plan(
-                &self.entities.crab,
+            let planned = movement::plan(
+                self.entities.crab.x,
+                self.entities.crab.y,
                 self.map,
                 &self.entities,
                 match self.frame_count >> 6 & 0b11 {
                     0b01 => Dir::Right,
                     _ => Dir::Left,
                 }
-            ) {
-                movement::perform(&mut self.entities.crab, self.map, planned);
+            );
+            if planned.len() > 0 {
+                movement::perform(&mut self.entities, self.map, planned);
 
                 match get_effective_tile_custom(self.map, &self.entities, self.entities.crab.x, self.entities.crab.y, NO_MOBS) {
                     Some(tile::BUTTON_LIT) => {
@@ -601,7 +700,7 @@ impl State {
         } else {
             None
         };
-    
+
         if input.pressed_this_frame(Button::A) {
             if input.gamepad.contains(Button::UP) {
                 self.interact(Dir::Up)
@@ -613,7 +712,7 @@ impl State {
                 self.interact(Dir::Right)
             }
         }
-    
+
         if let Some(sfx) = sfx_opt {
             speaker.request_sfx(sfx);
         }
@@ -708,7 +807,7 @@ impl State {
             if self.password_lock.open[i] {
                 continue
             }
-            
+
             if self.password_lock.xs[i] == x
             && self.password_lock.ys[i] == y
             {
@@ -764,9 +863,13 @@ impl State {
             Screen::Congraturation => return output,
         }
 
-        if let Some(planned) = movement::plan(&self.entities.player, self.map, &self.entities, dir) {
-            movement::perform(&mut self.entities.player, self.map, planned);
-        }
+        move_entity(
+            self.entities.player.x,
+            self.entities.player.y,
+            &mut self.entities,
+            self.map,
+            dir,
+        );
 
         match self.map {
              m if core::ptr::eq(m, &maps::HOUSES)=> {
@@ -940,7 +1043,7 @@ const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
         x: TEXT_BOX_FIRST_COLUMN,
         y,
     };
-    length += 1;    
+    length += 1;
 
     SegmentSlice {
         segments,
