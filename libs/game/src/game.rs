@@ -345,13 +345,18 @@ impl <const N: ButtonCount> PasswordLock<N> {
 //     * Show current frame count first
 // * Have a character move around, based on the frame time (done)
 // * Have the moving character push something, (a large pot I guess?) in front of a door so a room is not reachable at
-//   certain in-game times
+//   certain in-game times (done)
 // * And an NPC that has multiple dialogs that tells you which of a whole bunch of graves in a graveyard you can push
 //   over to reveal stairs or a treasure
 // * Make a new map with that graveyard in it, and a way to get there
 //    * Walk to edge of the map, but make the edges that don't have anything say a message instead?
 // * Allow moving that gravestone and put something under it
 //    * Allow moving all the gravestones?
+//    * Either a new map or thing you can read to get more knowledge
+//        * A tiny map with a zombie you can talk to happens to be easy, once we have any multi-map issues worked out
+//        * Move one of the password answers there, and remove one so you have to derive the last one
+//            * Make the third one say "I forgot my part of the combination!"
+//            * Place the rambly NPC where the last one is
 
 // Future ideas:
 // * Ways to get rewards
@@ -370,7 +375,7 @@ impl <const N: ButtonCount> PasswordLock<N> {
 // * Types of rewards
 //    * Literal Password
 //        * Like numbers or whatever
-//        * Cpudl be an switch puzzle but where an alternate state that woudln't otherwise be a solution opens another door
+//        * Could be an switch puzzle but where an alternate state that woudln't otherwise be a solution opens another door
 //    * A hidden mechanic: Something works in a non-obvious way
 //        * A mob moves in reaction to the player doing something specific
 //            * staying exactly n spaces away
@@ -541,6 +546,8 @@ fn move_entity(entity_x: X, entity_y: Y, entities: &mut Entities, map: Map, dir:
     movement::perform(entities, map, movement::plan(entity_x, entity_y, map, entities, dir));
 }
 
+type RambleIndex = u8;
+
 #[derive(Default)]
 pub enum MessageInfo {
     #[default]
@@ -549,6 +556,7 @@ pub enum MessageInfo {
         index: ButtonIndex,
     },
     PasswordRevealRefused,
+    Ramble(RambleIndex)
 }
 
 /// 65536 distinct frames ought to be enough for anybody!
@@ -789,7 +797,14 @@ impl State {
                 ask_for_password!(2)
             }
             Some(tile::PERSON_4) => {
-                ask_for_password!(3)
+                if let MessageInfo::Ramble(ref mut index) = self.message_info {
+                    *index += 1;
+                    if *index as usize >= RAMBLE_MESSAGES.len() {
+                        self.message_info = MessageInfo::NoMessage;
+                    }
+                } else {
+                    self.message_info = MessageInfo::Ramble(0);
+                }
             }
             None => {}
             _ => {}
@@ -928,6 +943,10 @@ impl Segment {
         x: xy::x(0),
         y: xy::y(0),
     };
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.text[self.start..self.end]
+    }
 }
 
 macro_rules! segment_literal {
@@ -999,6 +1018,22 @@ static WEST_3_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the
 static PASSWORD_REVEAL_REFUSAL_MESSAGE: SegmentSlice = fit_in_text_box(b"someone else told already. i won't.");
 static MISSING_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"missing_password_reveal_message");
 
+static RAMBLE_MESSAGES: [SegmentSlice; 10] = [
+    fit_in_text_box(b"let me tell you a story from my childhood."),
+    // TODO randomize the special gravestone placement?
+    fit_in_text_box(b"one day we were all playing in the graveyard. we must have run past a dozen rows of graves."),
+    fit_in_text_box(b"but then we were bushed so we walked past all eight of the johnson family's graves."),
+    fit_in_text_box(b"that's the trouble with kids these days, they don't know how to walk it off!"),
+    fit_in_text_box(b"then blair had the \"bright idea\" to stop and lean against one of the gravestones."),
+    fit_in_text_box(b"that kid always had an aversion to laying down right in a field for some reason. anyway..."),
+    fit_in_text_box(b"well blair ended up pushing the bloody thing out of its proper place!"),
+    fit_in_text_box(b"we quickly put the thing back and booked it out of there before anyone noticed"),
+    fit_in_text_box(b"and no one ever did! that's the moral of the story kid: it only counts if you get caught"),
+    fit_in_text_box(b"that's the trouble with kids these days, imagining some kind of absolute morality, independent of the consquences! pshaw!"),
+];
+
+static RAMBLE_FALLBACK_MESSAGE: SegmentSlice = fit_in_text_box(b"... blah ... blah ... blah ...");
+
 const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
     let mut segments = [Segment::DEFAULT; 16];
     let mut length = 0;
@@ -1048,6 +1083,39 @@ const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
     SegmentSlice {
         segments,
         length,
+    }
+}
+
+mod fit_in_text_box_works {
+    use super::*;
+
+    fn bytes_words(bytes: &[u8]) -> Vec<&[u8]> {
+        bytes.split(|&c| c == b' ').collect()
+    }
+
+    fn segment_slice_words(segment_slice: &SegmentSlice) -> Vec<&[u8]> {
+        let segments = segment_slice.as_slice();
+
+        let mut output = Vec::with_capacity(segments.len() * 16);
+
+        for segment in segments {
+            output.extend(bytes_words(segment.as_slice()));
+        }
+
+        output
+    }
+
+    #[test]
+    fn on_this_long_text() {
+        const TEXT: &[u8] = b"that's the trouble with kids these days, imagining some kind of absolute morality, independent of the consquences! pshaw!";
+     
+        let expected: Vec<_> = bytes_words(TEXT);
+
+        let ss = fit_in_text_box(TEXT);
+   
+        let actual = segment_slice_words(&ss);
+
+        assert_eq!(actual, expected);
     }
 }
 
@@ -1127,7 +1195,14 @@ impl State {
                 }
             },
             (Screen::Gameplay, &MessageInfo::PasswordRevealRefused) => {
-                    PASSWORD_REVEAL_REFUSAL_MESSAGE.as_slice()
+                PASSWORD_REVEAL_REFUSAL_MESSAGE.as_slice()
+            },
+            (Screen::Gameplay, &MessageInfo::Ramble(index)) => {
+                if let Some(msg) = RAMBLE_MESSAGES.get(index as usize) {
+                    msg.as_slice()
+                } else {
+                    RAMBLE_FALLBACK_MESSAGE.as_slice()
+                }
             },
         };
 

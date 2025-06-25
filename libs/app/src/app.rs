@@ -106,7 +106,7 @@ fn render(commands: &mut Commands, state: &game::State) {
 
     for segment in message_segments {
         commands.print(
-            &segment.text[segment.start..segment.end],
+            segment.as_slice(),
             to_x(segment.x),
             to_y(segment.y),
             6
