@@ -927,6 +927,7 @@ impl State {
     }
 }
 
+#[derive(Debug)]
 pub struct Segment {
     pub text: &'static [u8],
     pub start: usize,
@@ -1041,6 +1042,7 @@ const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
     // This curently panics if we have too many segments!
 
     let mut line_start_index = 0;
+    let mut end_of_last_word = 0;
     let mut y = TEXT_BOX_FIRST_LINE;
     // Iterating like this assumes we are dealing with ASCII, not Unicode!
     let mut i = 0;
@@ -1055,18 +1057,18 @@ const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
             }
             let width = end_of_word - line_start_index;
             if width >= TEXT_BOX_USUABLE_WIDTH {
-                let end = i.saturating_sub(1);
                 segments[length] = Segment {
                     text: s,
                     start: line_start_index,
-                    end,
+                    end: end_of_last_word,
                     x: TEXT_BOX_FIRST_COLUMN,
                     y,
                 };
                 length += 1;
                 y = xy::const_add_h(y, H::ONE);
-                line_start_index = end;
+                line_start_index = i + 1;
             }
+            end_of_last_word = end_of_word;
         }
 
         i += 1;
