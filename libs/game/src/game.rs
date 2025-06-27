@@ -347,7 +347,7 @@ impl <const N: ButtonCount> PasswordLock<N> {
 // * Have the moving character push something, (a large pot I guess?) in front of a door so a room is not reachable at
 //   certain in-game times (done)
 // * And an NPC that has multiple dialogs that tells you which of a whole bunch of graves in a graveyard you can push
-//   over to reveal stairs or a treasure
+//   over to reveal stairs or a treasure (done)
 // * Make a new map with that graveyard in it, and a way to get there
 //    * Walk to edge of the map, but make the edges that don't have anything say a message instead?
 // * Allow moving that gravestone and put something under it
@@ -586,7 +586,22 @@ impl State {
             y: xy::y(5),
         };
 
-        let (map, buttons) = if cfg!(feature = "structured_art_mode") {
+        #[cfg(feature = "structured_art_mode")]
+        const IS_STRUCTURED_ART_MODE: bool = true;
+
+        #[cfg(not(feature = "structured_art_mode"))]
+        const IS_STRUCTURED_ART_MODE: bool = false;
+
+        #[cfg(feature = "graveyard_mode")]
+        const IS_GRAVEYARD_MODE: bool = true;
+
+        #[cfg(not(feature = "graveyard_mode"))]
+        const IS_GRAVEYARD_MODE: bool = false;
+
+        #[cfg(all(feature = "graveyard_mode", feature = "structured_art_mode"))]
+        compile_error!("Can't support both graveyard_mode and structured_art_mode");
+
+        let (map, buttons) = if IS_STRUCTURED_ART_MODE {
             (
                 &maps::STRUCTURED_ART,
                 // Bogus values we don't expect to affect anything
@@ -598,6 +613,16 @@ impl State {
                     (xy::x(200), xy::y(200), "???"),
                     (xy::x(200), xy::y(200), "???"),
                 ]
+            )
+        } else if IS_GRAVEYARD_MODE {
+            (
+                &maps::GRAVEYARD,
+                [
+                    (xy::x(6), xy::y(13), "north"),
+                    (xy::x(7), xy::y(14), "east"),
+                    (xy::x(6), xy::y(15), "south"),
+                    (xy::x(5), xy::y(14), "west"),
+                ],
             )
         } else {
             entities.turtle.x = xy::x(16);
@@ -613,6 +638,9 @@ impl State {
             entities.large_pot.kind = tile::LARGE_POT;
 
             (
+                // TODO Separate out houses stuff from other maps properly
+                // Likely by making an enum with a variant per map, and putting all data like entities etc.
+                // inside it.
                 &maps::HOUSES,
                 [
                     (xy::x(6), xy::y(13), "north"),
@@ -1145,7 +1173,7 @@ pub type MessageSegments = std::slice::Iter<'static, Segment>;
 impl State {
     pub fn render_info(&self) -> RenderInfo<'_> {
         let map_w = xy::w(self.map.width as _);
-        let map_h = xy::h(self.map.width as _);
+        let map_h = xy::h(self.map.height as _);
 
         let output_width = xy::w(32).clamp(W::ZERO, map_w);
         let output_height = (TEXT_BOX_TOP - xy::y(0)).clamp(H::ZERO, map_h);
