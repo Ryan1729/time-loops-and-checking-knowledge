@@ -1,5 +1,3 @@
-use models::{Card, Rank, Suit, get_rank, get_suit, suits};
-
 use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 
 // TODO make constants for all valid tile IDs
@@ -242,50 +240,6 @@ pub mod card {
         HEIGHT,
         h_const_add(LEFT_SUIT_EDGE_H, CHAR_H)
     );
-}
-
-pub const TEN_CHAR: u8 = 27;
-
-pub const CLUB_CHAR: u8 = 31;
-pub const DIAMOND_CHAR: u8 = 29;
-pub const HEART_CHAR: u8 = 30;
-pub const SPADE_CHAR: u8 = 28;
-
-pub fn get_suit_colour_and_char(suit: Suit) -> (u8, u8) {
-    const RED_INDEX: u8 = 2;
-    const PURPLE_INDEX: u8 = 4;
-    const BLACK_INDEX: u8 = 7;
-
-    match suit {
-        suits::CLUBS => (BLACK_INDEX, CLUB_CHAR),
-        suits::DIAMONDS => (RED_INDEX, DIAMOND_CHAR),
-        suits::HEARTS => (RED_INDEX, HEART_CHAR),
-        suits::SPADES => (BLACK_INDEX, SPADE_CHAR),
-        _ => (PURPLE_INDEX, 33), //purple "!"
-    }
-}
-
-pub fn get_rank_char(card: Card) -> u8 {
-    get_rank_char_from_rank(get_rank(card))
-}
-
-pub fn get_rank_char_from_rank(rank: Rank) -> u8 {
-    match rank {
-        0 => b'a',
-        1 => b'2',
-        2 => b'3',
-        3 => b'4',
-        4 => b'5',
-        5 => b'6',
-        6 => b'7',
-        7 => b'8',
-        8 => b'9',
-        9 => TEN_CHAR,
-        10 => b'j',
-        11 => b'q',
-        12 => b'k',
-        _ => b'!',
-    }
 }
 
 pub const CHAR_SIZE: u8 = 8;

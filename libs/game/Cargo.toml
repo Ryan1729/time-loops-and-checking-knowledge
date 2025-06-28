@@ -18,7 +18,3 @@ path = "../platform_types"
 
 [dependencies.xs]
 path = "../xs"
-
-[features]
-structured_art_mode = []
-graveyard_mode = []

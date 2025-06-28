@@ -1,214 +1,10 @@
-use models::{tile, TileKind};
+use models::{X, Y, W, H, Rect, tile, TileKind};
+pub use models::xy;
 use platform_types::{Button, Input, Speaker, SFX, command, unscaled};
 use xs::{Xs, Seed};
 
+
 use std::collections::HashMap;
-
-pub mod xy {
-    use super::*;
-
-    pub type Inner = u8;
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct X(Inner);
-
-    /// Clamps to the valid range
-    pub const fn x(x: Inner) -> X {
-        X(if x > MAX_W_INNER { MAX_W_INNER } else { x })
-    }
-
-    pub const MAX_W_INNER: Inner = 0xF0;
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct W(Inner);
-
-    pub const fn w(w: Inner) -> W {
-        W(if w > MAX_W_INNER { MAX_W_INNER } else { w })
-    }
-
-    impl core::ops::SubAssign<W> for W {
-        fn sub_assign(&mut self, other: W) {
-            self.0 = self.0.saturating_sub(other.0);
-        }
-    }
-
-    impl core::ops::Sub<W> for W {
-        type Output = Self;
-
-        fn sub(mut self, other: W) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
-    pub const fn const_add_assign_w(x: &mut X, w: W) {
-        x.0 = x.0.saturating_add(w.0);
-        if x.0 > MAX_W_INNER {
-            x.0 = MAX_W_INNER;
-        }
-    }
-
-    impl core::ops::AddAssign<W> for X {
-        fn add_assign(&mut self, w: W) {
-            const_add_assign_w(self, w)
-        }
-    }
-
-    pub const fn const_add_w(mut x: X, w: W) -> X {
-        const_add_assign_w(&mut x, w);
-        x
-    }
-
-    impl core::ops::Add<W> for X {
-        type Output = Self;
-
-        fn add(mut self, other: W) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign<W> for X {
-        fn sub_assign(&mut self, other: W) {
-            self.0 = self.0.saturating_sub(other.0);
-        }
-    }
-
-    impl core::ops::Sub<W> for X {
-        type Output = Self;
-
-        fn sub(mut self, other: W) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
-    impl core::ops::Sub<X> for X {
-        type Output = W;
-
-        fn sub(self, other: X) -> Self::Output {
-            W(self.0.saturating_sub(other.0))
-        }
-    }
-
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct Y(Inner);
-
-    pub const MAX_H_INNER: Inner = 0xF0;
-
-    /// Clamps to the valid range
-    pub const fn y(y: Inner) -> Y {
-        Y(if y > MAX_H_INNER { MAX_H_INNER } else { y })
-    }
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct H(Inner);
-
-    pub const fn h(h: Inner) -> H {
-        H(if h > MAX_H_INNER { MAX_H_INNER } else { h })
-    }
-
-    impl core::ops::SubAssign<H> for H {
-        fn sub_assign(&mut self, other: H) {
-            self.0 = self.0.saturating_sub(other.0);
-        }
-    }
-
-    impl core::ops::Sub<H> for H {
-        type Output = Self;
-
-        fn sub(mut self, other: H) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
-    pub const fn const_add_assign_h(y: &mut Y, h: H) {
-        y.0 = y.0.saturating_add(h.0);
-        if y.0 > MAX_H_INNER {
-            y.0 = MAX_H_INNER;
-        }
-    }
-
-    impl core::ops::AddAssign<H> for Y {
-        fn add_assign(&mut self, h: H) {
-            const_add_assign_h(self, h)
-        }
-    }
-
-    pub const fn const_add_h(mut y: Y, h: H) -> Y {
-        const_add_assign_h(&mut y, h);
-        y
-    }
-
-    impl core::ops::Add<H> for Y {
-        type Output = Self;
-
-        fn add(mut self, other: H) -> Self::Output {
-            self += other;
-            self
-        }
-    }
-
-    impl core::ops::SubAssign<H> for Y {
-        fn sub_assign(&mut self, other: H) {
-            self.0 = self.0.saturating_sub(other.0);
-        }
-    }
-
-    impl core::ops::Sub<H> for Y {
-        type Output = Self;
-
-        fn sub(mut self, other: H) -> Self::Output {
-            self -= other;
-            self
-        }
-    }
-
-    impl core::ops::Sub<Y> for Y {
-        type Output = H;
-
-        fn sub(self, other: Y) -> Self::Output {
-            H(self.0.saturating_sub(other.0))
-        }
-    }
-
-    macro_rules! shared_impl {
-        ($($name: ident)+) => {
-            $(
-                impl $name {
-                    pub const ZERO: Self = Self(0);
-                    pub const ONE: Self = Self(1);
-
-                    pub fn get(self) -> unscaled::$name {
-                        unscaled::$name(self.0.into())
-                    }
-
-                    pub fn usize(self) -> usize {
-                        self.0.into()
-                    }
-
-                    pub fn halve(self) -> Self {
-                        Self(self.0 >> 1)
-                    }
-                }
-            )+
-        }
-    }
-
-    shared_impl!{
-        X Y W H
-    }
-
-    pub struct Rect {
-        pub min_x: X,
-        pub min_y: Y,
-        pub max_x: X,
-        pub max_y: Y,
-    }
-}
-pub use xy::{X, Y, W, H, Rect};
 
 #[derive(Clone, Default)]
 pub struct Entity {
@@ -227,7 +23,7 @@ pub struct Tile {
 type Map = &'static maps::Map;
 
 fn xy_to_i(map: Map, x: X, y: Y) -> usize {
-    y.usize() * map.width as usize + x.usize()
+    y.usize() * map.width.usize() + x.usize()
 }
 
 #[derive(Clone, Copy, Default)]
@@ -527,8 +323,8 @@ mod movement {
     }
 
     pub fn perform(entities: &mut Entities, map: Map, Planned { plans, .. }: Planned) {
-        let max_map_x = xy::x((map.width.saturating_sub(1)) as _);
-        let max_map_y = xy::y((map.height.saturating_sub(1)) as _);
+        let max_map_x = X::ZERO + map.width - W::ONE;
+        let max_map_y = Y::ZERO + map.height - H::ONE;
 
         for Plan { old_x, old_y, new_x, new_y, } in plans {
             if let Some(entity) = entities.get_mut(map, old_x, old_y) {
@@ -562,6 +358,8 @@ pub enum MessageInfo {
 /// 65536 distinct frames ought to be enough for anybody!
 type FrameCount = u16;
 
+
+
 pub struct State {
     pub frame_count: FrameCount,
     pub rng: Xs,
@@ -578,78 +376,27 @@ impl State {
     pub fn new(seed: Seed) -> State {
         let mut rng = xs::from_seed(seed);
 
+        let map = &maps::MAP;
+
         let mut entities = Entities::default();
 
         entities.player = Entity {
             kind: 9,
-            x: xy::x(2),
-            y: xy::y(5),
+            x: map.player_x,
+            y: map.player_y,
         };
 
-        #[cfg(feature = "structured_art_mode")]
-        const IS_STRUCTURED_ART_MODE: bool = true;
+        entities.turtle.x = map.turtle_x;
+        entities.turtle.y = map.turtle_y;
+        entities.turtle.kind = tile::TURTLE;
 
-        #[cfg(not(feature = "structured_art_mode"))]
-        const IS_STRUCTURED_ART_MODE: bool = false;
+        entities.crab.x = map.crab_x;
+        entities.crab.y = map.crab_y;
+        entities.crab.kind = tile::CRAB;
 
-        #[cfg(feature = "graveyard_mode")]
-        const IS_GRAVEYARD_MODE: bool = true;
-
-        #[cfg(not(feature = "graveyard_mode"))]
-        const IS_GRAVEYARD_MODE: bool = false;
-
-        #[cfg(all(feature = "graveyard_mode", feature = "structured_art_mode"))]
-        compile_error!("Can't support both graveyard_mode and structured_art_mode");
-
-        let (map, buttons) = if IS_STRUCTURED_ART_MODE {
-            (
-                &maps::STRUCTURED_ART,
-                // Bogus values we don't expect to affect anything
-                // TODO Adjust data model so we don't need these bogus values
-                // (Heap allocate these buttons? Or just use an enum?)
-                [
-                    (xy::x(200), xy::y(200), "???"),
-                    (xy::x(200), xy::y(200), "???"),
-                    (xy::x(200), xy::y(200), "???"),
-                    (xy::x(200), xy::y(200), "???"),
-                ]
-            )
-        } else if IS_GRAVEYARD_MODE {
-            (
-                &maps::GRAVEYARD,
-                [
-                    (xy::x(6), xy::y(13), "north"),
-                    (xy::x(7), xy::y(14), "east"),
-                    (xy::x(6), xy::y(15), "south"),
-                    (xy::x(5), xy::y(14), "west"),
-                ],
-            )
-        } else {
-            entities.turtle.x = xy::x(16);
-            entities.turtle.y = xy::y(4);
-            entities.turtle.kind = tile::TURTLE;
-
-            entities.crab.x = xy::x(60);
-            entities.crab.y = xy::y(4);
-            entities.crab.kind = tile::CRAB;
-
-            entities.large_pot.x = xy::x(59);
-            entities.large_pot.y = xy::y(4);
-            entities.large_pot.kind = tile::LARGE_POT;
-
-            (
-                // TODO Separate out houses stuff from other maps properly
-                // Likely by making an enum with a variant per map, and putting all data like entities etc.
-                // inside it.
-                &maps::HOUSES,
-                [
-                    (xy::x(6), xy::y(13), "north"),
-                    (xy::x(7), xy::y(14), "east"),
-                    (xy::x(6), xy::y(15), "south"),
-                    (xy::x(5), xy::y(14), "west"),
-                ],
-            )
-        };
+        entities.large_pot.x = map.large_pot_x;
+        entities.large_pot.y = map.large_pot_y;
+        entities.large_pot.kind = tile::LARGE_POT;
 
         State {
             frame_count: 0,
@@ -658,7 +405,7 @@ impl State {
             screen: Screen::default(),
             entities,
             password_lock: PasswordLock::new(
-                buttons,
+                map.buttons,
                 &mut rng
             ),
             message_info: MessageInfo::default(),
@@ -753,17 +500,20 @@ impl State {
             speaker.request_sfx(sfx);
         }
 
-        match self.frame_count.checked_add(1) {
-            Some(count) => {
-                self.frame_count = count;
-            }
-            None => {
-                self.reset_time();
+        if let Screen::Congraturation = self.screen {
+        } else {
+            match self.frame_count.checked_add(1) {
+                Some(count) => {
+                    self.frame_count = count;
+                }
+                None => {
+                    self.reset_time();
+                }
             }
         }
 
         use std::io::Write;
-        let _ = write!(&mut self.hud_prints[0].text[..], "{}", self.frame_count);
+        let _ = write!(&mut self.hud_prints[0].text[..], "{} ({}, {})", self.frame_count, self.entities.player.x.usize(), self.entities.player.y.usize());
     }
 
     fn reset_time(&mut self) {
@@ -841,8 +591,6 @@ impl State {
 
     #[must_use]
     fn entity_on_button(&mut self, x: X, y: Y) -> Option<SFX> {
-        let (key_x, key_y) = (xy::x(6), xy::y(14));
-
         let output = Some(SFX::ButtonPress);
 
         let button_count = self.password_lock.open.len() as ButtonCount;
@@ -871,10 +619,11 @@ impl State {
 
         // If lock is open
         if self.password_lock.open.iter().all(|&b| b) {
+            dbg!("password_lock.open");
             self.add_entity(Entity {
                 kind: tile::KEY,
-                x: key_x,
-                y: key_y,
+                x: self.map.key_x,
+                y: self.map.key_y,
             });
         } else {
             // If all the buttons were pressed without unlocking
@@ -914,41 +663,34 @@ impl State {
             dir,
         );
 
-        match self.map {
-             m if core::ptr::eq(m, &maps::HOUSES)=> {
-                let (locked_door_x, locked_door_y) = (xy::x(2), xy::y(3));
+        match get_effective_tile_custom(self.map, &self.entities, self.entities.player.x, self.entities.player.y, NO_MOBS) {
+            Some(tile::PORTAL) => {
+                output = Some(SFX::CardPlace);
 
-                match get_effective_tile_custom(self.map, &self.entities, self.entities.player.x, self.entities.player.y, NO_MOBS) {
-                    Some(tile::PORTAL) => {
-                        output = Some(SFX::CardPlace);
+                self.reset_time();
+            }
+            Some(tile::STAIRS_DOWN) => {
+                self.screen = Screen::Congraturation;
+            }
+            Some(tile::KEY) => {
+                output = Some(SFX::CardSlide);
 
-                        self.reset_time();
-                    }
-                    Some(tile::STAIRS_DOWN) => {
-                        self.screen = Screen::Congraturation;
-                    }
-                    Some(tile::KEY) => {
-                        output = Some(SFX::CardSlide);
+                self.add_entity(Entity {
+                    kind: tile::DOOR_2,
+                    x: self.map.locked_door_x,
+                    y: self.map.locked_door_y,
+                });
 
-                        self.add_entity(Entity {
-                            kind: tile::DOOR_2,
-                            x: locked_door_x,
-                            y: locked_door_y,
-                        });
-
-                        self.add_entity(Entity {
-                            kind: tile::FLOOR,
-                            x: self.entities.player.x,
-                            y: self.entities.player.y,
-                        });
-                    }
-                    Some(tile::BUTTON_LIT) => {
-                        output = self.entity_on_button(self.entities.player.x, self.entities.player.y);
-                    }
-                    _ => {}
-                }
-            },
-            _ => {},
+                self.add_entity(Entity {
+                    kind: tile::FLOOR,
+                    x: self.entities.player.x,
+                    y: self.entities.player.y,
+                });
+            }
+            Some(tile::BUTTON_LIT) => {
+                output = self.entity_on_button(self.entities.player.x, self.entities.player.y);
+            }
+            _ => {}
         }
 
         output
@@ -969,8 +711,8 @@ impl Segment {
         text: b"",
         start: 0,
         end: 0,
-        x: xy::x(0),
-        y: xy::y(0),
+        x: X::ZERO,
+        y: Y::ZERO,
     };
 
     pub fn as_slice(&self) -> &[u8] {
@@ -1009,8 +751,6 @@ static CONGRATURATION_LINES: [Segment; 2] =
         ),
     ];
 
-/// This group of constants is only for the HOUSES map.
-// TODO make this depend on the map, to be less foot-gunny
 const TEXT_BOX_TOP: Y = xy::y(24);
 const TEXT_BOX_FIRST_COLUMN: X = xy::x(1);
 const TEXT_BOX_FIRST_LINE: Y = xy::y(25);
@@ -1172,11 +912,11 @@ pub type MessageSegments = std::slice::Iter<'static, Segment>;
 
 impl State {
     pub fn render_info(&self) -> RenderInfo<'_> {
-        let map_w = xy::w(self.map.width as _);
-        let map_h = xy::h(self.map.height as _);
+        let map_w = self.map.width;
+        let map_h = self.map.height;
 
         let output_width = xy::w(32).clamp(W::ZERO, map_w);
-        let output_height = (TEXT_BOX_TOP - xy::y(0)).clamp(H::ZERO, map_h);
+        let output_height = (TEXT_BOX_TOP - Y::ZERO).clamp(H::ZERO, map_h);
 
         let mut offset_x: W = self.entities.player.x - (X::ZERO + output_width.halve());
         let mut offset_y: H = self.entities.player.y - (Y::ZERO + output_height.halve());
@@ -1242,11 +982,11 @@ impl State {
                     MessageInfo::NoMessage => None,
                     _ => {
                         // TODO? Modify rect size based on the text
-                        let min_y = xy::y(0) + output_height;
+                        let min_y = Y::ZERO + output_height;
                         Some(Rect {
-                            min_x: xy::x(0),
+                            min_x: X::ZERO,
                             min_y,
-                            max_x: xy::x(0) + output_width,
+                            max_x: X::ZERO + output_width,
                             max_y: min_y + xy::h(7),
                         })
                     }
@@ -1325,13 +1065,13 @@ impl Iterator for CameraIter<'_> {
 
             let output = self.tile.clone();
 
-            self.tile.x += xy::w(1);
+            self.tile.x += W::ONE;
 
             let right_x = X::ZERO + self.output_width;
 
             if self.tile.x >= right_x {
                 self.tile.x = X::ZERO;
-                self.tile.y += xy::h(1);
+                self.tile.y += H::ONE;
 
                 let bottom_y = Y::ZERO + self.output_height;
 

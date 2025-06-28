@@ -72,11 +72,11 @@ fn render(commands: &mut Commands, state: &game::State) {
     const X_OFFSET: unscaled::X = unscaled::X((command::WIDTH - (game::xy::MAX_W_INNER as unscaled::Inner)) / 2);
     const Y_OFFSET: unscaled::Y = unscaled::Y((command::HEIGHT - (game::xy::MAX_H_INNER as unscaled::Inner)) / 2);
 
-    fn to_x(x: game::X) -> unscaled::X {
+    fn to_x(x: game::xy::X) -> unscaled::X {
         X_OFFSET + x.get().get() * gfx::tile::WIDTH
     }
 
-    fn to_y(y: game::Y) -> unscaled::Y {
+    fn to_y(y: game::xy::Y) -> unscaled::Y {
         Y_OFFSET + y.get().get() * gfx::tile::HEIGHT
     }
 

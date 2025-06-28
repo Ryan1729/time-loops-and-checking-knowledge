@@ -1,3 +1,4 @@
+use platform_types::unscaled;
 use xs::Xs;
 
 pub type TileKind = u16;
@@ -31,33 +32,210 @@ pub mod tile {
     pub const PORTAL: TileKind = 113;
 }
 
-pub const RANK_COUNT: u8 = 13;
-pub const SUIT_COUNT: u8 = 4;
-pub const DECK_SIZE: u8 = RANK_COUNT * SUIT_COUNT;
-
-pub type Card = u8;
-
-pub fn gen_card(rng: &mut Xs) -> Card {
-    xs::range(rng, 0..DECK_SIZE as _) as Card
-}
-
-pub type Suit = u8;
-
-pub mod suits {
+// TODO I think this is being used as both world xy and screen xy,
+//      and we should make them distinct types if that becomes an issue
+pub mod xy {
     use super::*;
 
-    pub const CLUBS: Suit = 0;
-    pub const DIAMONDS: Suit = 1;
-    pub const HEARTS: Suit = 2;
-    pub const SPADES: Suit = 3;
-}
+    pub type Inner = u8;
 
-pub fn get_suit(card: Card) -> Suit {
-    card / RANK_COUNT
-}
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct X(Inner);
 
-pub type Rank = u8;
+    /// Clamps to the valid range
+    pub const fn x(x: Inner) -> X {
+        X(if x > MAX_W_INNER { MAX_W_INNER } else { x })
+    }
 
-pub fn get_rank(card: Card) -> Rank {
-    card % RANK_COUNT
+    pub const MAX_W_INNER: Inner = 0xF0;
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct W(Inner);
+
+    pub const fn w(w: Inner) -> W {
+        W(if w > MAX_W_INNER { MAX_W_INNER } else { w })
+    }
+
+    impl core::ops::SubAssign<W> for W {
+        fn sub_assign(&mut self, other: W) {
+            self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<W> for W {
+        type Output = Self;
+
+        fn sub(mut self, other: W) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
+    pub const fn const_add_assign_w(x: &mut X, w: W) {
+        x.0 = x.0.saturating_add(w.0);
+        if x.0 > MAX_W_INNER {
+            x.0 = MAX_W_INNER;
+        }
+    }
+
+    impl core::ops::AddAssign<W> for X {
+        fn add_assign(&mut self, w: W) {
+            const_add_assign_w(self, w)
+        }
+    }
+
+    pub const fn const_add_w(mut x: X, w: W) -> X {
+        const_add_assign_w(&mut x, w);
+        x
+    }
+
+    impl core::ops::Add<W> for X {
+        type Output = Self;
+
+        fn add(mut self, other: W) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl core::ops::SubAssign<W> for X {
+        fn sub_assign(&mut self, other: W) {
+            self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<W> for X {
+        type Output = Self;
+
+        fn sub(mut self, other: W) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
+    impl core::ops::Sub<X> for X {
+        type Output = W;
+
+        fn sub(self, other: X) -> Self::Output {
+            W(self.0.saturating_sub(other.0))
+        }
+    }
+
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Y(Inner);
+
+    pub const MAX_H_INNER: Inner = 0xF0;
+
+    /// Clamps to the valid range
+    pub const fn y(y: Inner) -> Y {
+        Y(if y > MAX_H_INNER { MAX_H_INNER } else { y })
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct H(Inner);
+
+    pub const fn h(h: Inner) -> H {
+        H(if h > MAX_H_INNER { MAX_H_INNER } else { h })
+    }
+
+    impl core::ops::SubAssign<H> for H {
+        fn sub_assign(&mut self, other: H) {
+            self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<H> for H {
+        type Output = Self;
+
+        fn sub(mut self, other: H) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
+    pub const fn const_add_assign_h(y: &mut Y, h: H) {
+        y.0 = y.0.saturating_add(h.0);
+        if y.0 > MAX_H_INNER {
+            y.0 = MAX_H_INNER;
+        }
+    }
+
+    impl core::ops::AddAssign<H> for Y {
+        fn add_assign(&mut self, h: H) {
+            const_add_assign_h(self, h)
+        }
+    }
+
+    pub const fn const_add_h(mut y: Y, h: H) -> Y {
+        const_add_assign_h(&mut y, h);
+        y
+    }
+
+    impl core::ops::Add<H> for Y {
+        type Output = Self;
+
+        fn add(mut self, other: H) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl core::ops::SubAssign<H> for Y {
+        fn sub_assign(&mut self, other: H) {
+            self.0 = self.0.saturating_sub(other.0);
+        }
+    }
+
+    impl core::ops::Sub<H> for Y {
+        type Output = Self;
+
+        fn sub(mut self, other: H) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
+    impl core::ops::Sub<Y> for Y {
+        type Output = H;
+
+        fn sub(self, other: Y) -> Self::Output {
+            H(self.0.saturating_sub(other.0))
+        }
+    }
+
+    macro_rules! shared_impl {
+        ($($name: ident)+) => {
+            $(
+                impl $name {
+                    pub const ZERO: Self = Self(0);
+                    pub const ONE: Self = Self(1);
+
+                    pub fn get(self) -> unscaled::$name {
+                        unscaled::$name(self.0.into())
+                    }
+
+                    pub fn usize(self) -> usize {
+                        self.0.into()
+                    }
+
+                    pub fn halve(self) -> Self {
+                        Self(self.0 >> 1)
+                    }
+                }
+            )+
+        }
+    }
+
+    shared_impl!{
+        X Y W H
+    }
+
+    pub struct Rect {
+        pub min_x: X,
+        pub min_y: Y,
+        pub max_x: X,
+        pub max_y: Y,
+    }
 }
+pub use xy::{X, Y, W, H, Rect};
