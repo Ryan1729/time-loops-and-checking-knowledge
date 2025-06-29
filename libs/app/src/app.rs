@@ -1,6 +1,6 @@
-use game::{Dir, RenderInfo};
+use game::RenderInfo;
 use gfx::{Commands};
-use platform_types::{command, sprite, unscaled, Button, Input, Speaker, SFX};
+use platform_types::{unscaled, Button, Input, Speaker, SFX};
 pub use platform_types::StateParams;
 
 pub struct State {
@@ -69,8 +69,8 @@ fn update(state: &mut game::State, input: Input, speaker: &mut Speaker) {
 
 #[inline]
 fn render(commands: &mut Commands, state: &game::State) {
-    const X_OFFSET: unscaled::X = unscaled::X((command::WIDTH - (game::xy::MAX_W_INNER as unscaled::Inner)) / 2);
-    const Y_OFFSET: unscaled::Y = unscaled::Y((command::HEIGHT - (game::xy::MAX_H_INNER as unscaled::Inner)) / 2);
+    const X_OFFSET: unscaled::X = unscaled::X(120);
+    const Y_OFFSET: unscaled::Y = unscaled::Y(60);
 
     fn to_x(x: game::xy::X) -> unscaled::X {
         X_OFFSET + x.get().get() * gfx::tile::WIDTH

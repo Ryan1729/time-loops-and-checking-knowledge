@@ -221,6 +221,8 @@ pub enum NeedsRedraw {
     target_feature = "sse2",
 ))]
 mod wide {
+    #![allow(unused)]
+
     use super::*;
     pub const WIDTH: unscaled::Inner = 4;
 
@@ -586,7 +588,7 @@ mod wide {
         (
             $addr: expr $(,)?
         ) => ({
-            
+
             use core::arch::wasm32::v128 as V;
 
             let addr: *const _ = $addr;
@@ -1132,7 +1134,7 @@ pub fn render(
                     (sprite_y + y_iter_count) * src_w
                     + (sprite_x + x_iter_count);
                 debug_assert!(
-                    base_src_i < GFX.len(), 
+                    base_src_i < GFX.len(),
                     "({sprite_y} + {y_iter_count}) * {src_w} + ({sprite_x} + {x_iter_count})
 {base_src_i} >= {}
 ({x_min} to {x_end}, {y_min} to {y_end})",

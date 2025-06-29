@@ -1,5 +1,4 @@
 use platform_types::unscaled;
-use xs::Xs;
 
 pub type TileKind = u16;
 

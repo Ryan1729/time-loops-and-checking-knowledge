@@ -1,6 +1,6 @@
 use models::{X, Y, W, H, Rect, tile, TileKind};
 pub use models::xy;
-use platform_types::{Button, Input, Speaker, SFX, command, unscaled};
+use platform_types::{Button, Input, Speaker, SFX, unscaled};
 use xs::{Xs, Seed};
 
 
@@ -37,7 +37,6 @@ pub enum Screen {
 pub struct Entities {
     pub player: Entity,
     pub dynamic: HashMap<usize, Entity>,
-    // Houses map specific
     pub turtle: Entity,
     pub crab: Entity,
     pub large_pot: Entity,
@@ -67,6 +66,7 @@ impl Entities {
         mobs!(&self)
     }
 
+    #[allow(dead_code)]
     fn mobs_mut(&mut self) -> [&mut Entity; 4] {
         mobs!(&mut self)
     }
@@ -415,8 +415,6 @@ impl State {
     }
 
     pub fn frame(&mut self, input: Input, speaker: &mut Speaker) {
-        let mut sfx_opt = None;
-
         // Turtle movement
         if self.frame_count & 0b1111 == 0 {
             let planned = movement::plan(
@@ -472,7 +470,7 @@ impl State {
             };
         }
 
-        sfx_opt = if input.pressed_this_frame(Button::UP) {
+        let sfx_opt = if input.pressed_this_frame(Button::UP) {
             self.move_player(Dir::Up)
         } else if input.pressed_this_frame(Button::DOWN) {
             self.move_player(Dir::Down)
@@ -856,6 +854,7 @@ const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
     }
 }
 
+#[cfg(test)]
 mod fit_in_text_box_works {
     use super::*;
 

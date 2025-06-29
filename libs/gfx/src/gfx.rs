@@ -1,4 +1,4 @@
-use platform_types::{ARGB, Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
+use platform_types::{Command, PALETTE, sprite, unscaled, command::{self, Rect}, PaletteIndex, FONT_BASE_Y, FONT_WIDTH};
 
 // TODO make constants for all valid tile IDs
 pub type TileId = u16;
