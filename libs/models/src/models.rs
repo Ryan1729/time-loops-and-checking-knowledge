@@ -1,4 +1,5 @@
 use platform_types::unscaled;
+use xs::Xs;
 
 pub type TileKind = u16;
 
@@ -28,6 +29,10 @@ pub mod tile {
     pub const BUTTON_LIT: TileKind = 84;
     pub const BUTTON_DARK: TileKind = 85;
     pub const BUTTON_PRESSED: TileKind = 16;
+    pub const EXCLAMATION_BUBBLE: TileKind = 102;
+    pub const GRAVE_1: TileKind = 106;
+    pub const GRAVE_2: TileKind = 107;
+    pub const SPECIAL_GRAVE: TileKind = GRAVE_2; // TODO unique graphic?
     pub const PORTAL: TileKind = 113;
 }
 

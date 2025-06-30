@@ -352,7 +352,8 @@ pub enum MessageInfo {
         index: ButtonIndex,
     },
     PasswordRevealRefused,
-    Ramble(RambleIndex)
+    ForgotPassword,
+    Ramble(RambleIndex),
 }
 
 /// 65536 distinct frames ought to be enough for anybody!
@@ -570,7 +571,7 @@ impl State {
             }
             Some(tile::PERSON_2) => {}
             Some(tile::PERSON_3) => {
-                ask_for_password!(2)
+                self.message_info = MessageInfo::ForgotPassword;
             }
             Some(tile::PERSON_4) => {
                 if let MessageInfo::Ramble(ref mut index) = self.message_info {
@@ -580,6 +581,15 @@ impl State {
                     }
                 } else {
                     self.message_info = MessageInfo::Ramble(0);
+                }
+            }
+            Some(tile::EXCLAMATION_BUBBLE) => {
+                // If it is the special grave bubble
+                if target_x == self.map.special_grave_x
+                && target_y == self.map.special_grave_y {
+                    self.message_info = MessageInfo::PasswordReveal {
+                        index: 3,
+                    };
                 }
             }
             None => {}
@@ -617,7 +627,6 @@ impl State {
 
         // If lock is open
         if self.password_lock.open.iter().all(|&b| b) {
-            dbg!("password_lock.open");
             self.add_entity(Entity {
                 kind: tile::KEY,
                 x: self.map.key_x,
@@ -660,6 +669,27 @@ impl State {
             self.map,
             dir,
         );
+
+        let (target_x, target_y) = xy_in_dir(dir, self.entities.player.x, self.entities.player.y);
+
+        // if we would push the special grave for the first time
+        if target_x == self.map.special_grave_x
+        && target_y == self.map.special_grave_y
+        && get_effective_tile(self.map, &self.entities, target_x, target_y) == Some(tile::SPECIAL_GRAVE) {
+            let (pushed_x, pushed_y) = xy_in_dir(dir, target_x, target_y);
+
+            self.add_entity(Entity {
+                kind: tile::SPECIAL_GRAVE,
+                x: pushed_x,
+                y: pushed_y,
+            });
+
+            self.add_entity(Entity {
+                kind: tile::EXCLAMATION_BUBBLE,
+                x: target_x,
+                y: target_y,
+            });
+        }
 
         match get_effective_tile_custom(self.map, &self.entities, self.entities.player.x, self.entities.player.y, NO_MOBS) {
             Some(tile::PORTAL) => {
@@ -784,6 +814,7 @@ static WEST_2_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the
 static WEST_3_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"push the west button fourth");
 static PASSWORD_REVEAL_REFUSAL_MESSAGE: SegmentSlice = fit_in_text_box(b"someone else told already. i won't.");
 static MISSING_PASSWORD_REVEAL_MESSAGE: SegmentSlice = fit_in_text_box(b"missing_password_reveal_message");
+static FORGOT_PASSWORD_MESSAGE: SegmentSlice = fit_in_text_box(b"i forgot my part of the password");
 
 static RAMBLE_MESSAGES: [SegmentSlice; 10] = [
     fit_in_text_box(b"let me tell you a story from my childhood."),
@@ -965,6 +996,9 @@ impl State {
             },
             (Screen::Gameplay, &MessageInfo::PasswordRevealRefused) => {
                 PASSWORD_REVEAL_REFUSAL_MESSAGE.as_slice()
+            },
+            (Screen::Gameplay, &MessageInfo::ForgotPassword) => {
+                FORGOT_PASSWORD_MESSAGE.as_slice()
             },
             (Screen::Gameplay, &MessageInfo::Ramble(index)) => {
                 if let Some(msg) = RAMBLE_MESSAGES.get(index as usize) {
