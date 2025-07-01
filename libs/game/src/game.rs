@@ -39,6 +39,7 @@ pub struct Entities {
     pub dynamic: HashMap<usize, Entity>,
     pub turtle: Entity,
     pub crab: Entity,
+    pub ghost: Entity,
     pub large_pot: Entity,
 }
 
@@ -48,6 +49,7 @@ macro_rules! mobs {
             & $self.player,
             & $self.turtle,
             & $self.crab,
+            & $self.ghost,
             & $self.large_pot,
         ]
     });
@@ -56,18 +58,21 @@ macro_rules! mobs {
             &mut $self.player,
             &mut $self.turtle,
             &mut $self.crab,
+            &mut $self.ghost,
             &mut $self.large_pot,
         ]
     });
 }
 
+const MOB_COUNT: usize = 5;
+
 impl Entities {
-    fn mobs(&self) -> [&Entity; 4] {
+    fn mobs(&self) -> [&Entity; MOB_COUNT] {
         mobs!(&self)
     }
 
     #[allow(dead_code)]
-    fn mobs_mut(&mut self) -> [&mut Entity; 4] {
+    fn mobs_mut(&mut self) -> [&mut Entity; MOB_COUNT] {
         mobs!(&mut self)
     }
 
@@ -146,25 +151,38 @@ impl <const N: ButtonCount> PasswordLock<N> {
 //   over to reveal stairs or a treasure (done)
 // * Make a new map with that graveyard in it, and a way to get there
 //    * Walk to edge of the map, but make the edges that don't have anything say a message instead?
-// * Allow moving that gravestone and put something under it
-//    * Allow moving all the gravestones?
+// * Allow moving that gravestone and put something under it (done)
 //    * Either a new map or thing you can read to get more knowledge
 //        * A tiny map with a zombie you can talk to happens to be easy, once we have any multi-map issues worked out
 //        * Move one of the password answers there, and remove one so you have to derive the last one
 //            * Make the third one say "I forgot my part of the combination!"
 //            * Place the rambly NPC where the last one is
+// * Make a bunch of mobs with different movement patterns
+//     * A ghost that literally just brownian motions around, and passes through anything to do so
+//         * Make it say something, so we can make it useful later
+//     * A Panoptikhan the floats left and right, moving up and down as it does so
+//         * Panoptikhan name is from https://www.prismaticwasteland.com/blog/no-one-owns-these-monsters
+//     * A zombie that walks up and down left and right, drifting left and right as it does so
+//     * A mouse that scurries around in squiggly way
+//        * Hamiltonian paths?
+//     * A dog that runs up to random things then yips/sniffs at them then picks a different thing to run to
+// * Pick one or more mob types to make into quests with knowledge rewards
 
 // Future ideas:
+// * Allow moving all the gravestones?
 // * Ways to get rewards
+//     * You need to get one or more mobs to a specific spot
+//         * Herding farm mobs
+//         * Rescuing a lost mob
+//         * Extracting a mob from a location
 //     * A chained trading/fetch quest
 //        * This isn't that much of a knowledge check though?
 //            * Final reward can be useful knowledge, akin to a password
 //                * figure out the reward first
 //            * Could be passing information back and forth between people
-//     * A character that yammers on and on and eventually tells you about where something hidden is
-//        * Could punt for now and just have you tell you after like two text boxes.
-//        * One idea for this: An elderly person tells you that a boulder used to be somewhere else, so then that tips
-//          you off that you need to move it. Maybe something is buried beneath it?
+//                * And there could be a lot of dialogue options and the final step in the puzzle 
+//                  indicates which one causes them to give you the password
+//                    * Maybe it's a list of NPC names to say that they sent you to do the quest, so they trust you
 //     * A timed event that you can figure out by observing what happens
 //         * Maybe some information, like a door combination, gets destroyed unless you intervene. Say a pie with a
 //           bit of paper stuck to it gets given to someone else. So you need to get in line at the right time
@@ -228,6 +246,16 @@ fn xy_in_dir(dir: Dir, mut x: X, mut y: Y) -> (X, Y) {
     }
 
     (x, y)
+}
+
+fn gen_dir(rng: &mut Xs) -> Dir {
+    use Dir::*;
+    match xs::range(rng, 0..4) {
+        1 => Down,
+        2 => Left,
+        3 => Right,
+        _ => Up,
+    }
 }
 
 mod movement {
@@ -395,6 +423,10 @@ impl State {
         entities.crab.y = map.crab_y;
         entities.crab.kind = tile::CRAB;
 
+        entities.ghost.x = map.ghost_x;
+        entities.ghost.y = map.ghost_y;
+        entities.ghost.kind = tile::GHOST_1;
+
         entities.large_pot.x = map.large_pot_x;
         entities.large_pot.y = map.large_pot_y;
         entities.large_pot.kind = tile::LARGE_POT;
@@ -469,6 +501,17 @@ impl State {
                     _ => {}
                 }
             };
+        }
+
+        // ghost movement
+        if self.frame_count & 0b11_1111 == 0 {
+            move_entity(
+                self.entities.ghost.x,
+                self.entities.ghost.y,
+                &mut self.entities,
+                self.map,
+                gen_dir(&mut self.rng),
+            );
         }
 
         let sfx_opt = if input.pressed_this_frame(Button::UP) {

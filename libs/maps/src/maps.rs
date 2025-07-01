@@ -15,6 +15,8 @@ pub struct Map<const N: usize = 4> {
     pub turtle_y: Y,
     pub crab_x: X,
     pub crab_y: Y,
+    pub ghost_x: X,
+    pub ghost_y: Y,
     pub large_pot_x: X,
     pub large_pot_y: Y,
     pub locked_door_x: X,
@@ -31,6 +33,7 @@ macro_rules! def {
         $player_x: literal $player_y: literal
         $turtle_x: literal $turtle_y: literal
         $crab_x: literal $crab_y: literal
+        $ghost_x: literal $ghost_y: literal
         $large_pot_x: literal $large_pot_y: literal
         $locked_door_x: literal $locked_door_y: literal
         $key_x: literal $key_y: literal
@@ -56,6 +59,8 @@ macro_rules! def {
                 turtle_y: xy::y($turtle_y),
                 crab_x: xy::x($crab_x),
                 crab_y: xy::y($crab_y),
+                ghost_x: xy::x($ghost_x),
+                ghost_y: xy::y($ghost_y),
                 large_pot_x: xy::x($large_pot_x),
                 large_pot_y: xy::y($large_pot_y),
                 locked_door_x: xy::x($locked_door_x),
@@ -76,6 +81,7 @@ pub static MAP: Map = def!{
     100 90  // player
     112 90  // turtle
     156 90  // crab
+    159 67  // ghost
     155 90  // large_pot
      98 89  // locked_door
     102 100 // key
