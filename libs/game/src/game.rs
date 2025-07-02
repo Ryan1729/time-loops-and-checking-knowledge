@@ -180,7 +180,7 @@ impl <const N: ButtonCount> PasswordLock<N> {
 //            * Final reward can be useful knowledge, akin to a password
 //                * figure out the reward first
 //            * Could be passing information back and forth between people
-//                * And there could be a lot of dialogue options and the final step in the puzzle 
+//                * And there could be a lot of dialogue options and the final step in the puzzle
 //                  indicates which one causes them to give you the password
 //                    * Maybe it's a list of NPC names to say that they sent you to do the quest, so they trust you
 //     * A timed event that you can figure out by observing what happens
@@ -382,6 +382,7 @@ pub enum MessageInfo {
     PasswordRevealRefused,
     ForgotPassword,
     Ramble(RambleIndex),
+    GhostOoo,
 }
 
 /// 65536 distinct frames ought to be enough for anybody!
@@ -635,6 +636,9 @@ impl State {
                     };
                 }
             }
+            Some(tile::GHOST_1) => {
+                self.message_info = MessageInfo::GhostOoo;
+            }
             None => {}
             _ => {}
         }
@@ -875,6 +879,8 @@ static RAMBLE_MESSAGES: [SegmentSlice; 10] = [
 
 static RAMBLE_FALLBACK_MESSAGE: SegmentSlice = fit_in_text_box(b"... blah ... blah ... blah ...");
 
+static GHOST_OOO_MESSAGE: SegmentSlice = fit_in_text_box(b"... Ooooo ... ooooo .. ooooo! ...");
+
 const fn fit_in_text_box(s: &'static [u8]) -> SegmentSlice {
     let mut segments = [Segment::DEFAULT; 16];
     let mut length = 0;
@@ -951,11 +957,11 @@ mod fit_in_text_box_works {
     #[test]
     fn on_this_long_text() {
         const TEXT: &[u8] = b"that's the trouble with kids these days, imagining some kind of absolute morality, independent of the consquences! pshaw!";
-     
+
         let expected: Vec<_> = bytes_words(TEXT);
 
         let ss = fit_in_text_box(TEXT);
-   
+
         let actual = segment_slice_words(&ss);
 
         assert_eq!(actual, expected);
@@ -1049,6 +1055,9 @@ impl State {
                 } else {
                     RAMBLE_FALLBACK_MESSAGE.as_slice()
                 }
+            },
+            (Screen::Gameplay, &MessageInfo::GhostOoo) => {
+                GHOST_OOO_MESSAGE.as_slice()
             },
         };
 
