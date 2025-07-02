@@ -1,5 +1,4 @@
 use platform_types::unscaled;
-use xs::Xs;
 
 pub type TileKind = u16;
 
@@ -17,6 +16,7 @@ pub mod tile {
     pub const PERSON_3: TileKind = 7;
     pub const PERSON_4: TileKind = 8;
     pub const PERSON_5: TileKind = 9;
+    pub const PANOPTIKHAN: TileKind = 13; // The floating eyeball head thing
     pub const FLOOR: TileKind = 15;
     pub const CRAB: TileKind = 21;
     pub const GHOST_1: TileKind = 22;

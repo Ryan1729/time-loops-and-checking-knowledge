@@ -33,61 +33,59 @@ pub enum Screen {
     Congraturation,
 }
 
-#[derive(Default)]
-pub struct Entities {
-    pub player: Entity,
-    pub dynamic: HashMap<usize, Entity>,
-    pub turtle: Entity,
-    pub crab: Entity,
-    pub ghost: Entity,
-    pub large_pot: Entity,
-}
-
-macro_rules! mobs {
-    (& $self: ident) => ({
-        [
-            & $self.player,
-            & $self.turtle,
-            & $self.crab,
-            & $self.ghost,
-            & $self.large_pot,
-        ]
-    });
-    (& mut $self: ident) => ({
-        [
-            &mut $self.player,
-            &mut $self.turtle,
-            &mut $self.crab,
-            &mut $self.ghost,
-            &mut $self.large_pot,
-        ]
-    });
-}
-
-const MOB_COUNT: usize = 5;
-
-impl Entities {
-    fn mobs(&self) -> [&Entity; MOB_COUNT] {
-        mobs!(&self)
-    }
-
-    #[allow(dead_code)]
-    fn mobs_mut(&mut self) -> [&mut Entity; MOB_COUNT] {
-        mobs!(&mut self)
-    }
-
-    fn get_mut(&mut self, map: Map, x: X, y: Y) -> Option<&mut Entity> {
-        for mob in mobs!(&mut self) {
-            if x == mob.x
-            && y == mob.y {
-                return Some(mob);
-            }
+macro_rules! entities_def {
+    ($($mob: ident)+) => {
+        #[derive(Default)]
+        pub struct Entities {
+            pub dynamic: HashMap<usize, Entity>,
+            $(pub $mob: Entity,)+
         }
 
-        let index = xy_to_i(map, x, y);
+        const MOB_COUNT: usize = {
+            let mut count = 0;
 
-        self.dynamic.get_mut(&index)
+            $({
+                // Use the repetition for something, so the += runs
+                let $mob = 1;
+                count += $mob;
+            })+
+
+            count
+        };
+        
+        impl Entities {
+            fn mobs(&self) -> [&Entity; MOB_COUNT] {
+                [$(& self.$mob,)+]
+            }
+        
+            #[allow(dead_code)]
+            fn mobs_mut(&mut self) -> [&mut Entity; MOB_COUNT] {
+                [$(&mut self.$mob,)+]
+            }
+        
+            fn get_mut(&mut self, map: Map, x: X, y: Y) -> Option<&mut Entity> {
+                for mob in [$(&mut self.$mob,)+] {
+                    if x == mob.x
+                    && y == mob.y {
+                        return Some(mob);
+                    }
+                }
+        
+                let index = xy_to_i(map, x, y);
+        
+                self.dynamic.get_mut(&index)
+            }
+        }
     }
+}
+
+entities_def! {
+    player
+    turtle
+    crab
+    ghost
+    large_pot
+    panoptikhan
 }
 
 type ButtonIndex = usize;
@@ -236,6 +234,20 @@ pub enum Dir {
     Right,
 }
 
+impl core::ops::Not for Dir {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        use Dir::*;
+        match self {
+            Up => Down,
+            Down => Up,
+            Left => Right,
+            Right => Left,
+        }
+    }
+}
+
 fn xy_in_dir(dir: Dir, mut x: X, mut y: Y) -> (X, Y) {
     use Dir::*;
     match dir {
@@ -290,7 +302,7 @@ mod movement {
             self.length
         }
     }
-
+    
     pub fn plan(entity_x: X, entity_y: Y, map: Map, entities: &Entities, dir: Dir) -> Planned {
         let mut planned = Planned::default();
 
@@ -400,6 +412,7 @@ pub struct State {
     pub message_info: MessageInfo,
     pub previous_password_reveal_index: Option<usize>,
     pub hud_prints: [Print; 1],
+    pub invert_panoptikhan_moves: bool,
 }
 
 impl State {
@@ -428,6 +441,10 @@ impl State {
         entities.ghost.y = map.ghost_y;
         entities.ghost.kind = tile::GHOST_1;
 
+        entities.panoptikhan.x = map.panoptikhan_x;
+        entities.panoptikhan.y = map.panoptikhan_y;
+        entities.panoptikhan.kind = tile::PANOPTIKHAN;
+
         entities.large_pot.x = map.large_pot_x;
         entities.large_pot.y = map.large_pot_y;
         entities.large_pot.kind = tile::LARGE_POT;
@@ -445,6 +462,7 @@ impl State {
             message_info: MessageInfo::default(),
             previous_password_reveal_index: <_>::default(),
             hud_prints: <_>::default(),
+            invert_panoptikhan_moves: false,
         }
     }
 
@@ -456,7 +474,7 @@ impl State {
                 self.entities.turtle.y,
                 self.map,
                 &self.entities,
-                match self.frame_count >> 6 & 0b11 {
+                match (self.frame_count >> 6) & 0b11 {
                     0b01 => Dir::Down,
                     0b10 => Dir::Right,
                     0b11 => Dir::Up,
@@ -485,7 +503,7 @@ impl State {
                 self.entities.crab.y,
                 self.map,
                 &self.entities,
-                match self.frame_count >> 6 & 0b11 {
+                match (self.frame_count >> 6) & 0b11 {
                     0b01 => Dir::Right,
                     _ => Dir::Left,
                 }
@@ -504,6 +522,7 @@ impl State {
             };
         }
 
+        // TODO allow ghost and panoptikhan to hover above everything
         // ghost movement
         if self.frame_count & 0b11_1111 == 0 {
             move_entity(
@@ -513,6 +532,37 @@ impl State {
                 self.map,
                 gen_dir(&mut self.rng),
             );
+        }
+
+        // panoptikhan movement
+        if self.frame_count & 0b1_1111 == 0 {
+            let mut dir = match (self.frame_count >> 5) & 0b111 {
+                0b01 => Dir::Up,
+                0b10 => Dir::Left,
+                0b11 => Dir::Down,
+                0b100 => Dir::Left,
+                0b101 => Dir::Down,
+                0b110 => Dir::Left,
+                0b111 => Dir::Up,
+                _ => Dir::Left,
+            };
+
+            if self.invert_panoptikhan_moves {
+                dir = !dir;
+            }
+
+            let planned = movement::plan(
+                self.entities.panoptikhan.x,
+                self.entities.panoptikhan.y,
+                self.map,
+                &self.entities,
+                dir
+            );
+            if planned.len() > 0 {
+                movement::perform(&mut self.entities, self.map, planned);
+            } else {
+                self.invert_panoptikhan_moves = !self.invert_panoptikhan_moves;
+            };  
         }
 
         let sfx_opt = if input.pressed_this_frame(Button::UP) {

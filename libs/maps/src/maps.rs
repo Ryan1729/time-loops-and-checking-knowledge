@@ -19,6 +19,8 @@ pub struct Map<const N: usize = 4> {
     pub ghost_y: Y,
     pub large_pot_x: X,
     pub large_pot_y: Y,
+    pub panoptikhan_x: X,
+    pub panoptikhan_y: Y,
     pub locked_door_x: X,
     pub locked_door_y: Y,
     pub key_x: X,
@@ -35,6 +37,7 @@ macro_rules! def {
         $crab_x: literal $crab_y: literal
         $ghost_x: literal $ghost_y: literal
         $large_pot_x: literal $large_pot_y: literal
+        $panoptikhan_x: literal $panoptikhan_y: literal
         $locked_door_x: literal $locked_door_y: literal
         $key_x: literal $key_y: literal
         [
@@ -63,6 +66,8 @@ macro_rules! def {
                 ghost_y: xy::y($ghost_y),
                 large_pot_x: xy::x($large_pot_x),
                 large_pot_y: xy::y($large_pot_y),
+                panoptikhan_x: xy::x($panoptikhan_x),
+                panoptikhan_y: xy::y($panoptikhan_y),
                 locked_door_x: xy::x($locked_door_x),
                 locked_door_y: xy::y($locked_door_y),
                 key_x: xy::x($key_x),
@@ -83,6 +88,7 @@ pub static MAP: Map = def!{
     156 90  // crab
     159 67  // ghost
     155 90  // large_pot
+    195 75  // panoptikhan
      98 89  // locked_door
     102 100 // key
     [       // button
