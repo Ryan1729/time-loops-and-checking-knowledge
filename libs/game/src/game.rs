@@ -303,15 +303,23 @@ mod movement {
         }
     }
     
+    pub type Flags = u8;
+
+    pub const PASS_THROUGH: Flags = 0x1;
+
     pub fn plan(entity_x: X, entity_y: Y, map: Map, entities: &Entities, dir: Dir) -> Planned {
+        plan_custom(entity_x, entity_y, map, entities, dir, 0)
+    }
+
+    pub fn plan_custom(entity_x: X, entity_y: Y, map: Map, entities: &Entities, dir: Dir, flags: Flags) -> Planned {
         let mut planned = Planned::default();
 
-        plan_helper(&mut planned, entity_x, entity_y, map, entities, dir);
+        plan_helper(&mut planned, entity_x, entity_y, map, entities, dir, flags);
 
         planned
     }
 
-    fn plan_helper(planned: &mut Planned, entity_x: X, entity_y: Y, map: Map, entities: &Entities, dir: Dir) {
+    fn plan_helper(planned: &mut Planned, entity_x: X, entity_y: Y, map: Map, entities: &Entities, dir: Dir, flags: Flags) {
         let (new_x, new_y) = xy_in_dir(dir, entity_x, entity_y);
 
         if new_x == entity_x && new_y == entity_y {
@@ -322,7 +330,9 @@ mod movement {
 
         let initial_length = planned.length;
 
-        if let Some(tile_kind) = get_effective_tile(map, entities, new_x, new_y) {
+        if flags & PASS_THROUGH != 0 {
+            // Always allow moving
+        } else if let Some(tile_kind) = get_effective_tile(map, entities, new_x, new_y) {
             match tile_kind {
                 tile::FLOOR
                 | tile::GROUND
@@ -340,7 +350,7 @@ mod movement {
                 | tile::PORTAL => {} // Allow move to happen
                 tile::LARGE_POT => {
                     // Attempt to push it
-                    plan_helper(planned, new_x, new_y, map, entities, dir);
+                    plan_helper(planned, new_x, new_y, map, entities, dir, flags);
 
                     if initial_length == planned.length {
                         // If something can't move, cancel all the other moves
@@ -379,7 +389,11 @@ mod movement {
 
 // TODO add a way to pull things, like pots. Does having them try to move you just work?
 fn move_entity(entity_x: X, entity_y: Y, entities: &mut Entities, map: Map, dir: Dir) {
-    movement::perform(entities, map, movement::plan(entity_x, entity_y, map, entities, dir));
+    move_entity_custom(entity_x, entity_y, entities, map, dir, 0)
+}
+
+fn move_entity_custom(entity_x: X, entity_y: Y, entities: &mut Entities, map: Map, dir: Dir, flags: movement::Flags) {
+    movement::perform(entities, map, movement::plan_custom(entity_x, entity_y, map, entities, dir, flags));
 }
 
 type RambleIndex = u8;
@@ -522,15 +536,15 @@ impl State {
             };
         }
 
-        // TODO allow ghost and panoptikhan to hover above everything
         // ghost movement
         if self.frame_count & 0b11_1111 == 0 {
-            move_entity(
+            move_entity_custom(
                 self.entities.ghost.x,
                 self.entities.ghost.y,
                 &mut self.entities,
                 self.map,
                 gen_dir(&mut self.rng),
+                movement::PASS_THROUGH,
             );
         }
 
@@ -551,12 +565,13 @@ impl State {
                 dir = !dir;
             }
 
-            let planned = movement::plan(
+            let planned = movement::plan_custom(
                 self.entities.panoptikhan.x,
                 self.entities.panoptikhan.y,
                 self.map,
                 &self.entities,
-                dir
+                dir,
+                movement::PASS_THROUGH,
             );
             if planned.len() > 0 {
                 movement::perform(&mut self.entities, self.map, planned);
