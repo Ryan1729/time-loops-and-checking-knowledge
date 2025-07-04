@@ -86,6 +86,7 @@ entities_def! {
     ghost
     large_pot
     panoptikhan
+    zombie
 }
 
 type ButtonIndex = usize;
@@ -156,15 +157,20 @@ impl <const N: ButtonCount> PasswordLock<N> {
 //            * Make the third one say "I forgot my part of the combination!"
 //            * Place the rambly NPC where the last one is
 // * Make a bunch of mobs with different movement patterns
-//     * A ghost that literally just brownian motions around, and passes through anything to do so
+//     * A ghost that literally just brownian motions around, and passes through anything to do so (done)
 //         * Make it say something, so we can make it useful later
-//     * A Panoptikhan the floats left and right, moving up and down as it does so
+//     * A Panoptikhan the floats left and right, moving up and down as it does so (done)
 //         * Panoptikhan name is from https://www.prismaticwasteland.com/blog/no-one-owns-these-monsters
 //     * A zombie that walks up and down left and right, drifting left and right as it does so
 //     * A mouse that scurries around in squiggly way
 //        * Hamiltonian paths?
+//            * Can't find a name for the H shaped fractal path.
+//        * How about define a squiggle as a figure 8 that moves forward a little, and every time the muse moves 
+//          there's a random chance for to do a squiggle instead of moving directly towards the target?
 //     * A dog that runs up to random things then yips/sniffs at them then picks a different thing to run to
 // * Pick one or more mob types to make into quests with knowledge rewards
+//     * An NPC that tells you what is special about their lost pet and then you can go find them in large penned-in 
+//       area, easily knowing that and bring them back for another reward
 
 // Future ideas:
 // * Allow moving all the gravestones?
@@ -427,6 +433,7 @@ pub struct State {
     pub previous_password_reveal_index: Option<usize>,
     pub hud_prints: [Print; 1],
     pub invert_panoptikhan_moves: bool,
+    pub invert_zombie_moves: bool,
 }
 
 impl State {
@@ -463,6 +470,10 @@ impl State {
         entities.large_pot.y = map.large_pot_y;
         entities.large_pot.kind = tile::LARGE_POT;
 
+        entities.zombie.x = map.zombie_x;
+        entities.zombie.y = map.zombie_y;
+        entities.zombie.kind = tile::ZOMBIE;
+
         State {
             frame_count: 0,
             rng,
@@ -477,6 +488,7 @@ impl State {
             previous_password_reveal_index: <_>::default(),
             hud_prints: <_>::default(),
             invert_panoptikhan_moves: false,
+            invert_zombie_moves: false,
         }
     }
 
@@ -577,6 +589,45 @@ impl State {
                 movement::perform(&mut self.entities, self.map, planned);
             } else {
                 self.invert_panoptikhan_moves = !self.invert_panoptikhan_moves;
+            };  
+        }
+
+        // zombie movement
+        if self.frame_count & 0b111_1111 == 0 {
+            let mut dir = match (self.frame_count >> 7) & 0b1111 {
+                0b01 => Dir::Right,
+                0b10 => Dir::Down,
+                0b11 => Dir::Down,
+                0b100 => Dir::Down,
+                0b101 => Dir::Down,
+                0b110 => Dir::Left,
+                0b111 => Dir::Down,
+                0b1000 => Dir::Down,
+                0b1001 => Dir::Down,
+                0b1010 => Dir::Left,
+                0b1011 => Dir::Down,
+                0b1100 => Dir::Down,
+                0b1101 => Dir::Down,
+                0b1110 => Dir::Down,
+                0b1111 => Dir::Right,
+                _ => Dir::Down,
+            };
+
+            if self.invert_zombie_moves {
+                dir = !dir;
+            }
+
+            let planned = movement::plan(
+                self.entities.zombie.x,
+                self.entities.zombie.y,
+                self.map,
+                &self.entities,
+                dir,
+            );
+            if planned.len() > 0 {
+                movement::perform(&mut self.entities, self.map, planned);
+            } else {
+                self.invert_zombie_moves = !self.invert_zombie_moves;
             };  
         }
 
