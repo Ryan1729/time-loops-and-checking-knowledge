@@ -26,6 +26,13 @@ fn xy_to_i(map: Map, x: X, y: Y) -> usize {
     y.usize() * map.width.usize() + x.usize()
 }
 
+fn i_to_xy(map: Map, index: usize) -> (X, Y) {
+    (
+        xy::x((index % map.width.usize()) as _),
+        xy::y((index / map.width.usize()) as _),
+    )
+}
+
 #[derive(Clone, Copy, Default)]
 pub enum Screen {
     #[default]
@@ -87,6 +94,7 @@ entities_def! {
     large_pot
     panoptikhan
     zombie
+    dog
 }
 
 type ButtonIndex = usize;
@@ -162,12 +170,12 @@ impl <const N: ButtonCount> PasswordLock<N> {
 //     * A Panoptikhan the floats left and right, moving up and down as it does so (done)
 //         * Panoptikhan name is from https://www.prismaticwasteland.com/blog/no-one-owns-these-monsters
 //     * A zombie that walks up and down left and right, drifting left and right as it does so
+//     * A dog that runs up to random things then yips/sniffs at them then picks a different thing to run to
 //     * A mouse that scurries around in squiggly way
 //        * Hamiltonian paths?
 //            * Can't find a name for the H shaped fractal path.
 //        * How about define a squiggle as a figure 8 that moves forward a little, and every time the muse moves 
 //          there's a random chance for to do a squiggle instead of moving directly towards the target?
-//     * A dog that runs up to random things then yips/sniffs at them then picks a different thing to run to
 // * Pick one or more mob types to make into quests with knowledge rewards
 //     * An NPC that tells you what is special about their lost pet and then you can go find them in large penned-in 
 //       area, easily knowing that and bring them back for another reward
@@ -274,6 +282,40 @@ fn gen_dir(rng: &mut Xs) -> Dir {
         3 => Right,
         _ => Up,
     }
+}
+
+fn random_landmark(rng: &mut Xs, map: Map) -> (X, Y) {
+    // TODO? Do this starting from X,Y to avoid the divide?
+    let mut index = xs::range(rng, 0..map.tiles.len() as _) as usize;
+
+    fn is_landmark(kind: TileKind) -> bool {
+        match kind {
+            tile::FLOOR
+            | tile::GROUND
+            | tile::GRASS_GROUND
+            => false,
+            _ => true,
+        }
+    }
+
+    // We don't do get_effective_tile because entities aren't landmarks
+    if is_landmark(map.tiles[index]) {
+        return i_to_xy(map, index);
+    }
+
+    let loop_index = index;
+
+    while {
+        index += 1;
+        if index >= map.tiles.len() {
+            index = 0;
+        }
+
+        !is_landmark(map.tiles[index])
+        && index != loop_index
+    } {}
+
+    return i_to_xy(map, index);
 }
 
 mod movement {
@@ -402,6 +444,17 @@ fn move_entity_custom(entity_x: X, entity_y: Y, entities: &mut Entities, map: Ma
     movement::perform(entities, map, movement::plan_custom(entity_x, entity_y, map, entities, dir, flags));
 }
 
+fn move_entity_on_path_towards(
+    entity_x: X,
+    entity_y: Y,
+    entities: &mut Entities,
+    map: Map,
+    target_x: X,
+    target_y: Y,
+) {
+    dbg!("TODO move_entity_on_path_towards");
+}
+
 type RambleIndex = u8;
 
 #[derive(Default)]
@@ -420,7 +473,12 @@ pub enum MessageInfo {
 /// 65536 distinct frames ought to be enough for anybody!
 type FrameCount = u16;
 
-
+#[derive(Default)]
+pub enum DogState {
+    #[default]
+    Sniffing,
+    MovingTowards(X, Y),
+}
 
 pub struct State {
     pub frame_count: FrameCount,
@@ -434,6 +492,7 @@ pub struct State {
     pub hud_prints: [Print; 1],
     pub invert_panoptikhan_moves: bool,
     pub invert_zombie_moves: bool,
+    pub dog_state: DogState,
 }
 
 impl State {
@@ -474,6 +533,10 @@ impl State {
         entities.zombie.y = map.zombie_y;
         entities.zombie.kind = tile::ZOMBIE;
 
+        entities.dog.x = map.dog_x;
+        entities.dog.y = map.dog_y;
+        entities.dog.kind = tile::DOG;
+
         State {
             frame_count: 0,
             rng,
@@ -489,6 +552,7 @@ impl State {
             hud_prints: <_>::default(),
             invert_panoptikhan_moves: false,
             invert_zombie_moves: false,
+            dog_state: <_>::default(),
         }
     }
 
@@ -629,6 +693,49 @@ impl State {
             } else {
                 self.invert_zombie_moves = !self.invert_zombie_moves;
             };  
+        }
+
+        // dog movement
+        match self.dog_state {
+            DogState::MovingTowards(target_x, target_y) => {
+                let intitial_x = self.entities.dog.x;
+                let intitial_y = self.entities.dog.y;
+
+                move_entity_on_path_towards(
+                    self.entities.dog.x,
+                    self.entities.dog.y,
+                    &mut self.entities,
+                    self.map,
+                    target_x,
+                    target_y,
+                );
+
+                if 
+                // If we got there
+                (
+                    self.entities.dog.x == target_x
+                    && self.entities.dog.y == target_y
+                ) 
+                || // Or we can't seem to get there
+                (
+                    self.entities.dog.x == intitial_x
+                    && self.entities.dog.y == intitial_y
+                )
+                {
+                    self.dog_state = DogState::Sniffing;
+                }
+            }
+            DogState::Sniffing => {
+                if self.frame_count & 0b1111 == 0 {
+                    // Run off to something else
+                    let (target_x, target_y) = random_landmark(
+                        &mut self.rng,
+                        self.map,
+                    );
+
+                    self.dog_state = DogState::MovingTowards(target_x, target_y);
+                }
+            }
         }
 
         let sfx_opt = if input.pressed_this_frame(Button::UP) {

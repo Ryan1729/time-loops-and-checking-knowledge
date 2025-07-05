@@ -19,6 +19,7 @@ pub mod tile {
     pub const ZOMBIE: TileKind = 11;
     pub const PANOPTIKHAN: TileKind = 13; // The floating eyeball head thing
     pub const FLOOR: TileKind = 15;
+    pub const DOG: TileKind = 19;
     pub const CRAB: TileKind = 21;
     pub const GHOST_1: TileKind = 22;
     //pub const GHOST_2: TileKind = 23;

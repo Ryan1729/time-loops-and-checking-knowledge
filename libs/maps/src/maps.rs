@@ -23,6 +23,8 @@ pub struct Map<const N: usize = 4> {
     pub panoptikhan_y: Y,
     pub zombie_x: X,
     pub zombie_y: Y,
+    pub dog_x: X,
+    pub dog_y: Y,
     pub locked_door_x: X,
     pub locked_door_y: Y,
     pub key_x: X,
@@ -41,6 +43,7 @@ macro_rules! def {
         $large_pot_x: literal $large_pot_y: literal
         $panoptikhan_x: literal $panoptikhan_y: literal
         $zombie_x: literal $zombie_y: literal
+        $dog_x: literal $dog_y: literal
         $locked_door_x: literal $locked_door_y: literal
         $key_x: literal $key_y: literal
         [
@@ -73,6 +76,8 @@ macro_rules! def {
                 panoptikhan_y: xy::y($panoptikhan_y),
                 zombie_x: xy::x($zombie_x),
                 zombie_y: xy::y($zombie_y),
+                dog_x: xy::x($dog_x),
+                dog_y: xy::y($dog_y),
                 locked_door_x: xy::x($locked_door_x),
                 locked_door_y: xy::y($locked_door_y),
                 key_x: xy::x($key_x),
@@ -95,6 +100,7 @@ pub static MAP: Map = def!{
     155 90  // large_pot
     195 75  // panoptikhan
     145 30  // zombie
+     99 90  // dog
      98 89  // locked_door
     102 100 // key
     [       // button
