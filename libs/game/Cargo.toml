@@ -7,6 +7,9 @@ edition = "2021"
 [lib]
 path = "src/game.rs"
 
+[dependencies]
+pathfinding = "4.14.0"
+
 [dependencies.maps]
 path = "../maps"
 

@@ -378,38 +378,19 @@ mod movement {
 
         let initial_length = planned.length;
 
-        if flags & PASS_THROUGH != 0 {
-            // Always allow moving
-        } else if let Some(tile_kind) = get_effective_tile(map, entities, new_x, new_y) {
-            match tile_kind {
-                tile::FLOOR
-                | tile::GROUND
-                | tile::GRASS_GROUND
-                | tile::DOOR_0
-                | tile::DOOR_1
-                | tile::DOOR_2
-                | tile::DOOR_3
-                | tile::DOOR_4
-                | tile::STAIRS_DOWN
-                | tile::KEY
-                | tile::BUTTON_LIT
-                | tile::BUTTON_DARK
-                | tile::BUTTON_PRESSED
-                | tile::PORTAL => {} // Allow move to happen
-                tile::LARGE_POT => {
-                    // Attempt to push it
-                    plan_helper(planned, new_x, new_y, map, entities, dir, flags);
+        match allowed_to(map, entities, new_x, new_y, flags) {
+            Allowed::Not => return,
+            Allowed::Move => {},
+            Allowed::Push => {
+                // Attempt to push it
+                plan_helper(planned, new_x, new_y, map, entities, dir, flags);
 
-                    if initial_length == planned.length {
-                        // If something can't move, cancel all the other moves
-                        *planned = Planned::default();
-                        return
-                    }
+                if initial_length == planned.length {
+                    // If something can't move, cancel all the other moves
+                    *planned = Planned::default();
+                    return
                 }
-                _ => return, // Don't allow move to happen
-            }
-        } else {
-            // If we're glitched out of bounds, let movement through so they can maybe get unstuck.
+            },
         }
 
         planned.push(Plan {
@@ -433,6 +414,47 @@ mod movement {
             }
         }
     }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Allowed {
+        Not,
+        Move,
+        Push,
+    }
+
+    pub fn allowed_to(map: Map, entities: &Entities, new_x: X, new_y: Y, flags: Flags) -> Allowed {
+        if flags & PASS_THROUGH != 0 {
+            // Always allow moving
+            Allowed::Move
+        } else if let Some(tile_kind) = get_effective_tile(map, entities, new_x, new_y) {
+            match tile_kind {
+                tile::FLOOR
+                | tile::GROUND
+                | tile::GRASS_GROUND
+                | tile::DOOR_0
+                | tile::DOOR_1
+                | tile::DOOR_2
+                | tile::DOOR_3
+                | tile::DOOR_4
+                | tile::STAIRS_DOWN
+                | tile::KEY
+                | tile::BUTTON_LIT
+                | tile::BUTTON_DARK
+                | tile::BUTTON_PRESSED
+                | tile::PORTAL => {
+                     // Allow move to happen
+                    Allowed::Move
+                }
+                tile::LARGE_POT => {
+                    Allowed::Push
+                }
+                _ => Allowed::Not, // Don't allow move to happen
+            }
+        } else {
+            // If we're glitched out of bounds, let movement through so they can maybe get unstuck.
+            Allowed::Move
+        }
+    }
 }
 
 // TODO add a way to pull things, like pots. Does having them try to move you just work?
@@ -452,7 +474,69 @@ fn move_entity_on_path_towards(
     target_x: X,
     target_y: Y,
 ) {
-    dbg!("TODO move_entity_on_path_towards");
+    use pathfinding::prelude::astar;
+    use Dir::*;
+
+    // TODO? movement::Flags param?
+    let flags = 0;
+    // TODO? cache the path? Or at least like reuse the memory allocation each time?
+    
+    let Some((path, _)) = astar(
+        &(entity_x, entity_y),
+        |&(x, y)| {
+            [
+                (x - W::ONE, y),
+                (x + W::ONE, y),
+                (x, y - H::ONE),
+                (x, y + H::ONE),
+            ]
+            .into_iter()
+            .filter(|&(x, y)| 
+                movement::allowed_to(
+                    map,
+                    entities,
+                    x,
+                    y,
+                    flags,
+                ) != movement::Allowed::Not
+            )
+            .map(|p| (p, 1))
+            
+        },
+        |&(x, y)| {
+            (x.usize().abs_diff(target_x.usize()))
+            + (y.usize().abs_diff(target_y.usize()))
+        },
+        |&(x, y)| {
+            x == target_x && y == target_y
+        }
+    ) else {
+        return
+    };
+
+    let dir = match (path.get(0), path.get(1)) {
+        (Some((start_x, start_y)), Some((next_x, next_y))) => {
+            match (
+                (start_x.usize() as isize - next_x.usize() as isize).signum(),
+                (start_y.usize() as isize - next_y.usize() as isize).signum(),
+            ) {
+                (0, -1) => Down,
+                (0, 1) => Up,
+                (-1, 0) => Right,
+                (1, 0) => Left,
+                _ => return,
+            }
+        }
+        (Some(_), None) // already here
+        | (None, _) // Ought to be impossible
+        => {
+            return
+        }
+    };
+
+    move_entity(
+        entity_x, entity_y, entities, map, dir
+    )
 }
 
 type RambleIndex = u8;
@@ -688,6 +772,7 @@ impl State {
                 &self.entities,
                 dir,
             );
+            // TODO Have zombie push buttons
             if planned.len() > 0 {
                 movement::perform(&mut self.entities, self.map, planned);
             } else {
@@ -701,6 +786,10 @@ impl State {
                 let intitial_x = self.entities.dog.x;
                 let intitial_y = self.entities.dog.y;
 
+                // TODO Have dog push buttons
+                // TODO? Have dog avoid the portal?
+                //    Arguably we'll likely eventually have a different way to reset time and not have a portal?
+                // TODO Have dog indicate that it has reached its destination
                 move_entity_on_path_towards(
                     self.entities.dog.x,
                     self.entities.dog.y,

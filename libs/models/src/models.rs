@@ -47,7 +47,7 @@ pub mod xy {
 
     pub type Inner = u8;
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct X(Inner);
 
     /// Clamps to the valid range
@@ -57,7 +57,7 @@ pub mod xy {
 
     pub const MAX_W_INNER: Inner = 0xF0;
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct W(Inner);
 
     pub const fn w(w: Inner) -> W {
@@ -130,7 +130,7 @@ pub mod xy {
     }
 
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct Y(Inner);
 
     pub const MAX_H_INNER: Inner = 0xF0;
@@ -140,7 +140,7 @@ pub mod xy {
         Y(if y > MAX_H_INNER { MAX_H_INNER } else { y })
     }
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct H(Inner);
 
     pub const fn h(h: Inner) -> H {
