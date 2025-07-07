@@ -59,17 +59,17 @@ macro_rules! entities_def {
 
             count
         };
-        
+
         impl Entities {
             fn mobs(&self) -> [&Entity; MOB_COUNT] {
                 [$(& self.$mob,)+]
             }
-        
+
             #[allow(dead_code)]
             fn mobs_mut(&mut self) -> [&mut Entity; MOB_COUNT] {
                 [$(&mut self.$mob,)+]
             }
-        
+
             fn get_mut(&mut self, map: Map, x: X, y: Y) -> Option<&mut Entity> {
                 for mob in [$(&mut self.$mob,)+] {
                     if x == mob.x
@@ -77,9 +77,9 @@ macro_rules! entities_def {
                         return Some(mob);
                     }
                 }
-        
+
                 let index = xy_to_i(map, x, y);
-        
+
                 self.dynamic.get_mut(&index)
             }
         }
@@ -174,10 +174,10 @@ impl <const N: ButtonCount> PasswordLock<N> {
 //     * A mouse that scurries around in squiggly way
 //        * Hamiltonian paths?
 //            * Can't find a name for the H shaped fractal path.
-//        * How about define a squiggle as a figure 8 that moves forward a little, and every time the muse moves 
+//        * How about define a squiggle as a figure 8 that moves forward a little, and every time the muse moves
 //          there's a random chance for to do a squiggle instead of moving directly towards the target?
 // * Pick one or more mob types to make into quests with knowledge rewards
-//     * An NPC that tells you what is special about their lost pet and then you can go find them in large penned-in 
+//     * An NPC that tells you what is special about their lost pet and then you can go find them in large penned-in
 //       area, easily knowing that and bring them back for another reward
 
 // Future ideas:
@@ -350,7 +350,7 @@ mod movement {
             self.length
         }
     }
-    
+
     pub type Flags = u8;
 
     pub const PASS_THROUGH: Flags = 0x1;
@@ -455,6 +455,81 @@ mod movement {
             Allowed::Move
         }
     }
+
+    pub fn plan_entity_on_path_towards(
+        entity_x: X,
+        entity_y: Y,
+        entities: &Entities,
+        map: Map,
+        target_x: X,
+        target_y: Y,
+    ) -> Planned {
+        use pathfinding::prelude::astar;
+        use Dir::*;
+
+        let mut output = Planned::default();
+
+        // TODO? movement::Flags param?
+        let flags = 0;
+        // TODO? cache the path? Or at least like reuse the memory allocation each time?
+
+        let Some((path, _)) = astar(
+            &(entity_x, entity_y),
+            |&(x, y)| {
+                [
+                    (x - W::ONE, y),
+                    (x + W::ONE, y),
+                    (x, y - H::ONE),
+                    (x, y + H::ONE),
+                ]
+                .into_iter()
+                .filter(|&(x, y)|
+                    movement::allowed_to(
+                        map,
+                        entities,
+                        x,
+                        y,
+                        flags,
+                    ) != movement::Allowed::Not
+                )
+                .map(|p| (p, 1))
+
+            },
+            |&(x, y)| {
+                (x.usize().abs_diff(target_x.usize()))
+                + (y.usize().abs_diff(target_y.usize()))
+            },
+            |&(x, y)| {
+                x == target_x && y == target_y
+            }
+        ) else {
+            return output
+        };
+
+        let dir = match (path.get(0), path.get(1)) {
+            (Some((start_x, start_y)), Some((next_x, next_y))) => {
+                match (
+                    (start_x.usize() as isize - next_x.usize() as isize).signum(),
+                    (start_y.usize() as isize - next_y.usize() as isize).signum(),
+                ) {
+                    (0, -1) => Down,
+                    (0, 1) => Up,
+                    (-1, 0) => Right,
+                    (1, 0) => Left,
+                    _ => return output,
+                }
+            }
+            (Some(_), None) // already here
+            | (None, _) // Ought to be impossible
+            => {
+                return output
+            }
+        };
+
+        plan(
+            entity_x, entity_y, map, entities, dir
+        )
+    }
 }
 
 // TODO add a way to pull things, like pots. Does having them try to move you just work?
@@ -474,69 +549,7 @@ fn move_entity_on_path_towards(
     target_x: X,
     target_y: Y,
 ) {
-    use pathfinding::prelude::astar;
-    use Dir::*;
-
-    // TODO? movement::Flags param?
-    let flags = 0;
-    // TODO? cache the path? Or at least like reuse the memory allocation each time?
-    
-    let Some((path, _)) = astar(
-        &(entity_x, entity_y),
-        |&(x, y)| {
-            [
-                (x - W::ONE, y),
-                (x + W::ONE, y),
-                (x, y - H::ONE),
-                (x, y + H::ONE),
-            ]
-            .into_iter()
-            .filter(|&(x, y)| 
-                movement::allowed_to(
-                    map,
-                    entities,
-                    x,
-                    y,
-                    flags,
-                ) != movement::Allowed::Not
-            )
-            .map(|p| (p, 1))
-            
-        },
-        |&(x, y)| {
-            (x.usize().abs_diff(target_x.usize()))
-            + (y.usize().abs_diff(target_y.usize()))
-        },
-        |&(x, y)| {
-            x == target_x && y == target_y
-        }
-    ) else {
-        return
-    };
-
-    let dir = match (path.get(0), path.get(1)) {
-        (Some((start_x, start_y)), Some((next_x, next_y))) => {
-            match (
-                (start_x.usize() as isize - next_x.usize() as isize).signum(),
-                (start_y.usize() as isize - next_y.usize() as isize).signum(),
-            ) {
-                (0, -1) => Down,
-                (0, 1) => Up,
-                (-1, 0) => Right,
-                (1, 0) => Left,
-                _ => return,
-            }
-        }
-        (Some(_), None) // already here
-        | (None, _) // Ought to be impossible
-        => {
-            return
-        }
-    };
-
-    move_entity(
-        entity_x, entity_y, entities, map, dir
-    )
+    movement::perform(entities, map, movement::plan_entity_on_path_towards(entity_x, entity_y, entities, map, target_x, target_y));
 }
 
 type RambleIndex = u8;
@@ -641,6 +654,20 @@ impl State {
     }
 
     pub fn frame(&mut self, input: Input, speaker: &mut Speaker) {
+        macro_rules! button_check {
+            ($entity: expr) => ({
+                let entity = &$entity;
+                match get_effective_tile_custom(self.map, &self.entities, entity.x, entity.y, NO_MOBS) {
+                    Some(tile::BUTTON_LIT) => {
+                        if let Some(sfx) = self.entity_on_button(entity.x, entity.y) {
+                            speaker.request_sfx(sfx);
+                        }
+                    }
+                    _ => {}
+                }
+            })
+        }
+
         // Turtle movement
         if self.frame_count & 0b1111 == 0 {
             let planned = movement::plan(
@@ -659,14 +686,7 @@ impl State {
             if planned.len() > 0 {
                 movement::perform(&mut self.entities, self.map, planned);
 
-                match get_effective_tile_custom(self.map, &self.entities, self.entities.turtle.x, self.entities.turtle.y, NO_MOBS) {
-                    Some(tile::BUTTON_LIT) => {
-                        if let Some(sfx) = self.entity_on_button(self.entities.turtle.x, self.entities.turtle.y) {
-                            speaker.request_sfx(sfx);
-                        }
-                    }
-                    _ => {}
-                }
+                button_check!(self.entities.turtle);
             };
         }
 
@@ -685,14 +705,7 @@ impl State {
             if planned.len() > 0 {
                 movement::perform(&mut self.entities, self.map, planned);
 
-                match get_effective_tile_custom(self.map, &self.entities, self.entities.crab.x, self.entities.crab.y, NO_MOBS) {
-                    Some(tile::BUTTON_LIT) => {
-                        if let Some(sfx) = self.entity_on_button(self.entities.crab.x, self.entities.crab.y) {
-                            speaker.request_sfx(sfx);
-                        }
-                    }
-                    _ => {}
-                }
+                button_check!(self.entities.crab);
             };
         }
 
@@ -737,7 +750,7 @@ impl State {
                 movement::perform(&mut self.entities, self.map, planned);
             } else {
                 self.invert_panoptikhan_moves = !self.invert_panoptikhan_moves;
-            };  
+            };
         }
 
         // zombie movement
@@ -775,9 +788,11 @@ impl State {
             // TODO Have zombie push buttons
             if planned.len() > 0 {
                 movement::perform(&mut self.entities, self.map, planned);
+
+                button_check!(self.entities.zombie);
             } else {
                 self.invert_zombie_moves = !self.invert_zombie_moves;
-            };  
+            };
         }
 
         // dog movement
@@ -786,11 +801,7 @@ impl State {
                 let intitial_x = self.entities.dog.x;
                 let intitial_y = self.entities.dog.y;
 
-                // TODO Have dog push buttons
-                // TODO? Have dog avoid the portal?
-                //    Arguably we'll likely eventually have a different way to reset time and not have a portal?
-                // TODO Have dog indicate that it has reached its destination
-                move_entity_on_path_towards(
+                let planned = movement::plan_entity_on_path_towards(
                     self.entities.dog.x,
                     self.entities.dog.y,
                     &mut self.entities,
@@ -799,12 +810,23 @@ impl State {
                     target_y,
                 );
 
-                if 
+                if planned.len() > 0 {
+                    movement::perform(&mut self.entities, self.map, planned);
+
+                    button_check!(self.entities.dog);
+                };
+
+                // TODO consider reducing duplication for button pushing
+                // TODO? Have dog avoid the portal?
+                //    Arguably we'll likely eventually have a different way to reset time and not have a portal?
+                // TODO Have dog indicate that it has reached its destination
+
+                if
                 // If we got there
                 (
                     self.entities.dog.x == target_x
                     && self.entities.dog.y == target_y
-                ) 
+                )
                 || // Or we can't seem to get there
                 (
                     self.entities.dog.x == intitial_x
