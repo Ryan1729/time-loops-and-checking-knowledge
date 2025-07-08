@@ -245,5 +245,25 @@ pub mod xy {
         pub max_x: X,
         pub max_y: Y,
     }
+
+    pub fn eight_neighbors(x: X, y: Y) -> [(X, Y); 8] {
+        let mut output: [(X, Y); 8] = <_>::default();
+
+        for i in 0..8 {
+            output[i] = match i {
+                1 => (x + W::ONE, y - H::ONE),
+                2 => (x, y - H::ONE),
+                3 => (x - W::ONE, y - H::ONE),
+                4 => (x - W::ONE, y),
+                5 => (x - W::ONE, y + H::ONE),
+                6 => (x, y + H::ONE),
+                7 => (x + W::ONE, y + H::ONE),
+                _ => (x + W::ONE, y),
+            };
+        }
+
+        output
+    }
+
 }
 pub use xy::{X, Y, W, H, Rect};

@@ -284,7 +284,11 @@ fn gen_dir(rng: &mut Xs) -> Dir {
     }
 }
 
-fn random_landmark(rng: &mut Xs, map: Map) -> (X, Y) {
+fn random_landmark(
+    rng: &mut Xs,
+    map: Map,
+    is_suitable: impl Fn((X, Y)) -> bool,
+) -> (X, Y) {
     // TODO? Do this starting from X,Y to avoid the divide?
     let mut index = xs::range(rng, 0..map.tiles.len() as _) as usize;
 
@@ -293,6 +297,7 @@ fn random_landmark(rng: &mut Xs, map: Map) -> (X, Y) {
             tile::FLOOR
             | tile::GROUND
             | tile::GRASS_GROUND
+            | tile::EXCLAMATION_BUBBLE
             => false,
             _ => true,
         }
@@ -300,7 +305,10 @@ fn random_landmark(rng: &mut Xs, map: Map) -> (X, Y) {
 
     // We don't do get_effective_tile because entities aren't landmarks
     if is_landmark(map.tiles[index]) {
-        return i_to_xy(map, index);
+        let xy = i_to_xy(map, index);
+        if is_suitable(xy) {
+            return xy
+        }
     }
 
     let loop_index = index;
@@ -312,6 +320,7 @@ fn random_landmark(rng: &mut Xs, map: Map) -> (X, Y) {
         }
 
         !is_landmark(map.tiles[index])
+        && !is_suitable(i_to_xy(map, index))
         && index != loop_index
     } {}
 
@@ -467,7 +476,7 @@ mod movement {
         use pathfinding::prelude::astar;
         use Dir::*;
 
-        let mut output = Planned::default();
+        let output = Planned::default();
 
         // TODO? movement::Flags param?
         let flags = 0;
@@ -541,6 +550,7 @@ fn move_entity_custom(entity_x: X, entity_y: Y, entities: &mut Entities, map: Ma
     movement::perform(entities, map, movement::plan_custom(entity_x, entity_y, map, entities, dir, flags));
 }
 
+#[allow(unused)]
 fn move_entity_on_path_towards(
     entity_x: X,
     entity_y: Y,
@@ -785,7 +795,7 @@ impl State {
                 &self.entities,
                 dir,
             );
-            // TODO Have zombie push buttons
+
             if planned.len() > 0 {
                 movement::perform(&mut self.entities, self.map, planned);
 
@@ -816,10 +826,8 @@ impl State {
                     button_check!(self.entities.dog);
                 };
 
-                // TODO consider reducing duplication for button pushing
                 // TODO? Have dog avoid the portal?
                 //    Arguably we'll likely eventually have a different way to reset time and not have a portal?
-                // TODO Have dog indicate that it has reached its destination
 
                 if
                 // If we got there
@@ -842,6 +850,23 @@ impl State {
                     let (target_x, target_y) = random_landmark(
                         &mut self.rng,
                         self.map,
+                        |(x, y)| {
+                            if self.entities.dog.x == x
+                            && self.entities.dog.y == y {
+                                return false
+                            }
+
+                            let xys = xy::eight_neighbors(self.entities.dog.x, self.entities.dog.y);
+
+                            for xy in xys {
+                                if xy.0 == x
+                                && xy.1 == y {
+                                    return false
+                                }
+                            }
+
+                            true
+                        }
                     );
 
                     self.dog_state = DogState::MovingTowards(target_x, target_y);
@@ -1424,10 +1449,31 @@ impl State {
             y: self.entities.player.y - offset_y,
         });
 
+        let speech_bubble = match self.dog_state {
+            DogState::Sniffing => {
+                let xys = xy::eight_neighbors(
+                    self.entities.dog.x - offset_x,
+                    self.entities.dog.y - offset_y
+                );
+
+                let (x, y) = xys[(self.frame_count >> 3 & 0b111) as usize];
+
+                Some(
+                    Tile {
+                        kind: tile::EXCLAMATION_BUBBLE,
+                        x,
+                        y,
+                    }
+                )
+            },
+            DogState::MovingTowards(..) => None,
+        };
+
         RenderInfo {
             tiles: CurrentTiles {
                 camera,
                 player,
+                speech_bubble,
             },
             text_boxes: text_box.into_iter(),
             message_segments: message_segments.into_iter(),
@@ -1441,6 +1487,7 @@ impl State {
 pub struct CurrentTiles<'camera> {
     camera: CameraIter<'camera>,
     player: Option<Tile>,
+    speech_bubble: Option<Tile>,
 }
 
 impl Iterator for CurrentTiles<'_> {
@@ -1452,6 +1499,10 @@ impl Iterator for CurrentTiles<'_> {
         }
 
         if let Some(t) = self.player.take() {
+            return Some(t)
+        }
+
+        if let Some(t) = self.speech_bubble.take() {
             return Some(t)
         }
 
