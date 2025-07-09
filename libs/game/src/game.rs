@@ -1,3 +1,4 @@
+use maps::{DogIndex};
 use models::{X, Y, W, H, Rect, tile, TileKind};
 pub use models::xy;
 use platform_types::{Button, Input, Speaker, SFX, unscaled};
@@ -41,11 +42,12 @@ pub enum Screen {
 }
 
 macro_rules! entities_def {
-    ($($mob: ident)+) => {
+    ($($mob: ident)+ [ $($dog_mob: ident)+ ]) => {
         #[derive(Default)]
         pub struct Entities {
             pub dynamic: HashMap<usize, Entity>,
             $(pub $mob: Entity,)+
+            $(pub $dog_mob: Entity,)+
         }
 
         const MOB_COUNT: usize = {
@@ -57,21 +59,27 @@ macro_rules! entities_def {
                 count += $mob;
             })+
 
+            $({
+                // Use the repetition for something, so the += runs
+                let $dog_mob = 1;
+                count += $dog_mob;
+            })+
+
             count
         };
 
         impl Entities {
             fn mobs(&self) -> [&Entity; MOB_COUNT] {
-                [$(& self.$mob,)+]
+                [$(& self.$mob,)+ $(& self.$dog_mob,)+ ]
             }
 
             #[allow(dead_code)]
             fn mobs_mut(&mut self) -> [&mut Entity; MOB_COUNT] {
-                [$(&mut self.$mob,)+]
+                [$(&mut self.$mob,)+ $(&mut self.$dog_mob,)+ ]
             }
 
             fn get_mut(&mut self, map: Map, x: X, y: Y) -> Option<&mut Entity> {
-                for mob in [$(&mut self.$mob,)+] {
+                for mob in [$(&mut self.$mob,)+ $(&mut self.$dog_mob,)+ ] {
                     if x == mob.x
                     && y == mob.y {
                         return Some(mob);
@@ -81,6 +89,40 @@ macro_rules! entities_def {
                 let index = xy_to_i(map, x, y);
 
                 self.dynamic.get_mut(&index)
+            }
+
+            fn get_dog_mut(&mut self, index: DogIndex) -> Option<&mut Entity> {
+                let mut current = 0;
+
+                $({
+                    if current == index {
+                        return Some(&mut self.$dog_mob)
+                    }
+
+                    {
+                        #![allow(unused_assignments)] // We don't care if this does an extra assignment in the None case.
+                        current += 1;
+                    }
+                })+
+
+                None
+            }
+
+            fn get_dog(&self, index: DogIndex) -> Option<&Entity> {
+                let mut current = 0;
+
+                $({
+                    if current == index {
+                        return Some(&self.$dog_mob)
+                    }
+
+                    {
+                        #![allow(unused_assignments)] // We don't care if this does an extra assignment in the None case.
+                        current += 1;
+                    }
+                })+
+
+                None
             }
         }
     }
@@ -94,7 +136,30 @@ entities_def! {
     large_pot
     panoptikhan
     zombie
-    dog
+    [
+        dog0
+        dog1
+        dog2
+        dog3
+        dog4
+        dog5
+        dog6
+        dog7
+        dog8
+        dog9
+        dog10
+        dog11
+        dog12
+        dog13
+        dog14
+        dog15
+        dog16
+        dog17
+        dog18
+        dog19
+        dog20
+        dog21
+    ]
 }
 
 type ButtonIndex = usize;
@@ -284,6 +349,60 @@ fn gen_dir(rng: &mut Xs) -> Dir {
     }
 }
 
+fn is_landmark(kind: TileKind) -> bool {
+    match kind {
+        tile::FLOOR
+        | tile::GROUND
+        | tile::GRASS_GROUND
+        | tile::EXCLAMATION_BUBBLE
+        | tile::DOOR_0
+        | tile::DOOR_1
+        | tile::DOOR_2
+        | tile::DOOR_3
+        | tile::DOOR_4
+        | tile::WALL_0
+        | tile::WALL_1
+        | tile::WALL_2
+        | tile::WALL_3
+        | tile::WALL_4
+        | tile::WALL_5
+        | tile::WALL_6
+        | tile::WALL_7
+        | tile::WALL_8
+        | tile::WALL_9
+        | tile::WALL_10
+        | tile::WALL_11
+        | tile::WALL_12
+        | tile::WALL_13
+        | tile::WALL_14
+        | tile::WALL_15
+        | tile::WALL_16
+        | tile::WALL_17
+        | tile::WALL_18
+        | tile::WALL_19
+        | tile::WALL_20
+        | tile::WALL_21
+        | tile::WALL_22
+        | tile::WALL_23
+        | tile::WALL_24
+        | tile::WALL_25
+        | tile::WALL_26
+        => false,
+        _ => true,
+    }
+}
+
+fn is_xy_landmark(map: Map, x: X, y: Y) -> bool {
+    let index = xy_to_i(map, x, y);
+
+    // We don't do get_effective_tile because entities aren't landmarks
+    map.tiles
+        .get(index)
+        .map(|&kind| is_landmark(kind))
+        // TODO? Track down why this panicked once when this was map.tiles[index]
+        .unwrap_or(false)
+}
+
 fn random_landmark(
     rng: &mut Xs,
     map: Map,
@@ -291,17 +410,6 @@ fn random_landmark(
 ) -> (X, Y) {
     // TODO? Do this starting from X,Y to avoid the divide?
     let mut index = xs::range(rng, 0..map.tiles.len() as _) as usize;
-
-    fn is_landmark(kind: TileKind) -> bool {
-        match kind {
-            tile::FLOOR
-            | tile::GROUND
-            | tile::GRASS_GROUND
-            | tile::EXCLAMATION_BUBBLE
-            => false,
-            _ => true,
-        }
-    }
 
     // We don't do get_effective_tile because entities aren't landmarks
     if is_landmark(map.tiles[index]) {
@@ -599,7 +707,7 @@ pub struct State {
     pub hud_prints: [Print; 1],
     pub invert_panoptikhan_moves: bool,
     pub invert_zombie_moves: bool,
-    pub dog_state: DogState,
+    pub dog_states: [DogState; maps::DOG_COUNT as usize],
 }
 
 impl State {
@@ -640,9 +748,13 @@ impl State {
         entities.zombie.y = map.zombie_y;
         entities.zombie.kind = tile::ZOMBIE;
 
-        entities.dog.x = map.dog_x;
-        entities.dog.y = map.dog_y;
-        entities.dog.kind = tile::DOG;
+        for i in 0..maps::DOG_COUNT {
+            let Some(dog) = entities.get_dog_mut(i) else { continue };
+
+            dog.x = map.dogs[i as usize].0;
+            dog.y = map.dogs[i as usize].1;
+            dog.kind = tile::DOG;
+        }
 
         State {
             frame_count: 0,
@@ -659,7 +771,7 @@ impl State {
             hud_prints: <_>::default(),
             invert_panoptikhan_moves: false,
             invert_zombie_moves: false,
-            dog_state: <_>::default(),
+            dog_states: <_>::default(),
         }
     }
 
@@ -806,70 +918,80 @@ impl State {
         }
 
         // dog movement
-        match self.dog_state {
-            DogState::MovingTowards(target_x, target_y) => {
-                let intitial_x = self.entities.dog.x;
-                let intitial_y = self.entities.dog.y;
+        for i in 0..maps::DOG_COUNT {
+            let Some(dog) = self.entities.get_dog(i) else { continue };
 
-                let planned = movement::plan_entity_on_path_towards(
-                    self.entities.dog.x,
-                    self.entities.dog.y,
-                    &mut self.entities,
-                    self.map,
-                    target_x,
-                    target_y,
-                );
-
-                if planned.len() > 0 {
-                    movement::perform(&mut self.entities, self.map, planned);
-
-                    button_check!(self.entities.dog);
-                };
-
-                // TODO? Have dog avoid the portal?
-                //    Arguably we'll likely eventually have a different way to reset time and not have a portal?
-
-                if
-                // If we got there
-                (
-                    self.entities.dog.x == target_x
-                    && self.entities.dog.y == target_y
-                )
-                || // Or we can't seem to get there
-                (
-                    self.entities.dog.x == intitial_x
-                    && self.entities.dog.y == intitial_y
-                )
-                {
-                    self.dog_state = DogState::Sniffing;
-                }
-            }
-            DogState::Sniffing => {
-                if self.frame_count & 0b1111 == 0 {
-                    // Run off to something else
-                    let (target_x, target_y) = random_landmark(
-                        &mut self.rng,
+            match self.dog_states[i as usize] {
+                DogState::MovingTowards(target_x, target_y) => {
+                    let intitial_x = dog.x;
+                    let intitial_y = dog.y;
+    
+                    let planned = movement::plan_entity_on_path_towards(
+                        dog.x,
+                        dog.y,
+                        &mut self.entities,
                         self.map,
-                        |(x, y)| {
-                            if self.entities.dog.x == x
-                            && self.entities.dog.y == y {
-                                return false
-                            }
+                        target_x,
+                        target_y,
+                    );
+    
+                    if planned.len() > 0 {
+                        movement::perform(&mut self.entities, self.map, planned);
+    
+                        let Some(dog) = self.entities.get_dog(i) else { continue };
 
-                            let xys = xy::eight_neighbors(self.entities.dog.x, self.entities.dog.y);
+                        button_check!(dog);
+                    };
+    
+                    // TODO? Have dog avoid the portal?
+                    //    Arguably we'll likely eventually have a different way to reset time and not have a portal?
+    
+                    let Some(dog) = self.entities.get_dog(i) else { continue };
 
-                            for xy in xys {
-                                if xy.0 == x
-                                && xy.1 == y {
+                    if
+                    // If we got there
+                    (
+                        dog.x == target_x
+                        && dog.y == target_y
+                    )
+                    || // Or we can't seem to get there
+                    (
+                        dog.x == intitial_x
+                        && dog.y == intitial_y
+                    )
+                    {
+                        self.dog_states[i as usize] = DogState::Sniffing;
+                    }
+                }
+                DogState::Sniffing => {
+                    if self.frame_count & 0b11_1111 == 0
+                    || !xy::eight_neighbors(dog.x, dog.y).iter().any(|&(x, y)| is_xy_landmark(self.map, x, y))
+                    {
+                        // Run off to something else
+                        let (target_x, target_y) = random_landmark(
+                            &mut self.rng,
+                            self.map,
+                            |(x, y)| {
+                                if dog.x == x
+                                && dog.y == y {
                                     return false
                                 }
+    
+                                let xys = xy::eight_neighbors(dog.x, dog.y);
+    
+                                for xy in xys {
+                                    if xy.0 == x
+                                    && xy.1 == y {
+                                        return false
+                                    }
+                                }
+    
+                                true
                             }
-
-                            true
-                        }
-                    );
-
-                    self.dog_state = DogState::MovingTowards(target_x, target_y);
+                        );
+    
+                        self.dog_states[i as usize] = DogState::MovingTowards(target_x, target_y);
+                    }
                 }
             }
         }
@@ -1449,31 +1571,54 @@ impl State {
             y: self.entities.player.y - offset_y,
         });
 
-        let speech_bubble = match self.dog_state {
-            DogState::Sniffing => {
-                let xys = xy::eight_neighbors(
-                    self.entities.dog.x - offset_x,
-                    self.entities.dog.y - offset_y
-                );
+        let mut speech_bubbles = [const { None }; SPEECH_BUBBLE_COUNT as _];
 
-                let (x, y) = xys[(self.frame_count >> 3 & 0b111) as usize];
+        // Tryign to make it easy to add more sources of speech bubles later.
+        const DOG_OFFSET: usize = 0;
 
-                Some(
-                    Tile {
-                        kind: tile::EXCLAMATION_BUBBLE,
-                        x,
-                        y,
+        for dog_i in 0..maps::DOG_COUNT {
+            let bubble_i = dog_i as usize - DOG_OFFSET;
+
+            speech_bubbles[bubble_i] = match self.dog_states[dog_i as usize] {
+                DogState::Sniffing => {
+                    if let Some(dog) = self.entities.get_dog(dog_i) {
+                        let xys = xy::eight_neighbors(
+                            dog.x,
+                            dog.y,
+                        );
+        
+                        let (x, y) = xys[(self.frame_count >> 3 & 0b111) as usize];
+        
+                        Some(
+                            Tile {
+                                kind: tile::EXCLAMATION_BUBBLE,
+                                x,
+                                y,
+                            }
+                        )
+                    } else {
+                        None
                     }
-                )
-            },
-            DogState::MovingTowards(..) => None,
+                },
+                DogState::MovingTowards(..) => None,
+            };
+        }
+
+        let bubbles = BubbleIter {
+            speech_bubbles,
+            index: 0,
+            offset_x,
+            offset_y,
+            output_width,
+            output_height,
+            tile: Tile::default(),
         };
 
         RenderInfo {
             tiles: CurrentTiles {
                 camera,
                 player,
-                speech_bubble,
+                bubbles,
             },
             text_boxes: text_box.into_iter(),
             message_segments: message_segments.into_iter(),
@@ -1484,10 +1629,14 @@ impl State {
     }
 }
 
+type SpeechBubbleCount = u8;
+
+const SPEECH_BUBBLE_COUNT: SpeechBubbleCount = maps::DOG_COUNT;
+
 pub struct CurrentTiles<'camera> {
     camera: CameraIter<'camera>,
     player: Option<Tile>,
-    speech_bubble: Option<Tile>,
+    bubbles: BubbleIter,
 }
 
 impl Iterator for CurrentTiles<'_> {
@@ -1502,7 +1651,7 @@ impl Iterator for CurrentTiles<'_> {
             return Some(t)
         }
 
-        if let Some(t) = self.speech_bubble.take() {
+        if let Some(t) = self.bubbles.next() {
             return Some(t)
         }
 
@@ -1552,6 +1701,48 @@ impl Iterator for CameraIter<'_> {
             }
 
             return Some(output)
+        }
+
+        None
+    }
+}
+
+struct BubbleIter {
+    tile: Tile,
+    speech_bubbles: [Option<Tile>; SPEECH_BUBBLE_COUNT as usize],
+    index: usize,
+    offset_x: xy::W,
+    offset_y: xy::H,
+    output_width: xy::W,
+    output_height: xy::H,
+}
+
+impl Iterator for BubbleIter {
+    type Item = Tile;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let min_x = X::ZERO + self.offset_x;
+        let min_y = Y::ZERO + self.offset_y;
+        let max_x = min_x + self.output_width;
+        let max_y = min_y + self.output_height;
+
+        while self.index < self.speech_bubbles.len() {
+            let index = self.index;
+            self.index += 1;
+
+            if let Some(bubble_tile) = self.speech_bubbles[index].take() {
+                if bubble_tile.x >= min_x
+                && bubble_tile.y >= min_y
+                && bubble_tile.x < max_x
+                && bubble_tile.y < max_y {
+                    // Do the subtraction last, otherwise we get issues due to saturation
+                    self.tile.x = bubble_tile.x - self.offset_x;
+                    self.tile.y = bubble_tile.y - self.offset_y;
+                    self.tile.kind = bubble_tile.kind;
+
+                    return Some(self.tile.clone())
+                }
+            }            
         }
 
         None
