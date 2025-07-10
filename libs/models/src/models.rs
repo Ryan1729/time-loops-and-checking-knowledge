@@ -37,6 +37,8 @@ pub mod tile {
     pub const DOOR_2: TileKind = 33;
     pub const DOOR_3: TileKind = 128;
     pub const DOOR_4: TileKind = 134;
+    pub const CLOSED_DOOR: TileKind = 32;
+    pub const OPEN_DOOR: TileKind = DOOR_2;
     pub const PERSON_0: TileKind = 4;
     pub const PERSON_1: TileKind = 5;
     pub const PERSON_2: TileKind = 6;

@@ -360,6 +360,7 @@ fn is_landmark(kind: TileKind) -> bool {
         | tile::DOOR_2
         | tile::DOOR_3
         | tile::DOOR_4
+        | tile::CLOSED_DOOR
         | tile::WALL_0
         | tile::WALL_1
         | tile::WALL_2
@@ -688,9 +689,10 @@ pub enum MessageInfo {
 /// 65536 distinct frames ought to be enough for anybody!
 type FrameCount = u16;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum DogState {
     #[default]
+    PreSniffing, // This state exists to reduce sniffing indicator spam/flickering
     Sniffing,
     MovingTowards(X, Y),
 }
@@ -960,10 +962,12 @@ impl State {
                         && dog.y == intitial_y
                     )
                     {
-                        self.dog_states[i as usize] = DogState::Sniffing;
+                        self.dog_states[i as usize] = DogState::PreSniffing;
                     }
                 }
-                DogState::Sniffing => {
+                DogState::PreSniffing | DogState::Sniffing => {
+                    self.dog_states[i as usize] = DogState::Sniffing;
+
                     if self.frame_count & 0b11_1111 == 0
                     || !xy::eight_neighbors(dog.x, dog.y).iter().any(|&(x, y)| is_xy_landmark(self.map, x, y))
                     {
@@ -1119,6 +1123,16 @@ impl State {
             }
             Some(tile::GHOST_1) => {
                 self.message_info = MessageInfo::GhostOoo;
+            }
+            Some(tile::CLOSED_DOOR) => {
+                self.add_entity(Entity {
+                    kind: tile::OPEN_DOOR,
+                    x: target_x,
+                    y: target_y,
+                });
+            }
+            Some(tile::OPEN_DOOR) => {
+                self.remove_entity(target_x, target_y);
             }
             None => {}
             _ => {}
@@ -1600,7 +1614,7 @@ impl State {
                         None
                     }
                 },
-                DogState::MovingTowards(..) => None,
+                DogState::MovingTowards(..) | DogState::PreSniffing => None,
             };
         }
 
