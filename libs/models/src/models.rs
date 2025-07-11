@@ -48,7 +48,6 @@ pub mod tile {
     pub const ZOMBIE: TileKind = 11;
     pub const PANOPTIKHAN: TileKind = 13; // The floating eyeball head thing
     pub const FLOOR: TileKind = 15;
-    pub const DOG: TileKind = 19;
     pub const CRAB: TileKind = 21;
     pub const GHOST_1: TileKind = 22;
     //pub const GHOST_2: TileKind = 23;
@@ -67,6 +66,24 @@ pub mod tile {
     pub const GRAVE_2: TileKind = 107;
     pub const SPECIAL_GRAVE: TileKind = GRAVE_2; // TODO unique graphic?
     pub const PORTAL: TileKind = 113;
+
+    pub const DOGS: [TileKind; 15] = [
+        19, // The original
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+    ];
 }
 
 // TODO I think this is being used as both world xy and screen xy,

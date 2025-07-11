@@ -710,12 +710,26 @@ pub struct State {
     pub invert_panoptikhan_moves: bool,
     pub invert_zombie_moves: bool,
     pub dog_states: [DogState; maps::DOG_COUNT as usize],
+    pub dog_tile_kinds: DogTileKinds,
 }
+
+type DogTileKinds = [TileKind; maps::DOG_COUNT as usize];
 
 impl State {
     pub fn new(seed: Seed) -> State {
         let mut rng = xs::from_seed(seed);
 
+        let mut dog_tile_kinds = DogTileKinds::default();
+
+        for i in 0..maps::DOG_COUNT {
+            let dog_index = xs::range(&mut rng, 0..tile::DOGS.len() as _) as usize;
+            dog_tile_kinds[i as usize] = tile::DOGS[dog_index];
+        }
+
+        Self::new_inner(rng, dog_tile_kinds)
+    }
+
+    fn new_inner(mut rng: Xs, dog_tile_kinds: DogTileKinds) -> State {
         let map = &maps::MAP;
 
         let mut entities = Entities::default();
@@ -755,7 +769,8 @@ impl State {
 
             dog.x = map.dogs[i as usize].0;
             dog.y = map.dogs[i as usize].1;
-            dog.kind = tile::DOG;
+
+            dog.kind = dog_tile_kinds[i as usize];
         }
 
         State {
@@ -774,7 +789,22 @@ impl State {
             invert_panoptikhan_moves: false,
             invert_zombie_moves: false,
             dog_states: <_>::default(),
+            dog_tile_kinds,
         }
+    }
+
+    fn reset_time(&mut self) {
+        let mut password_lock = self.password_lock.clone();
+        // Retain the combination for this game across resets.
+        password_lock.reset();
+
+        // New seed for the rng, so different resets are slightly different.
+        *self = State::new_inner(
+            xs::from_seed(xs::new_seed(&mut self.rng)),
+            self.dog_tile_kinds,
+        );
+
+        self.password_lock = password_lock;
     }
 
     pub fn frame(&mut self, input: Input, speaker: &mut Speaker) {
@@ -1042,19 +1072,6 @@ impl State {
 
         use std::io::Write;
         let _ = write!(&mut self.hud_prints[0].text[..], "{} ({}, {})", self.frame_count, self.entities.player.x.usize(), self.entities.player.y.usize());
-    }
-
-    fn reset_time(&mut self) {
-        let mut password_lock = self.password_lock.clone();
-        // Retain the combination for this game across resets.
-        password_lock.reset();
-
-        // New seed for the rng, so different resets are slightly different.
-        *self = State::new(
-            xs::new_seed(&mut self.rng)
-        );
-
-        self.password_lock = password_lock;
     }
 
     fn add_entity(&mut self, entity: Entity) {
